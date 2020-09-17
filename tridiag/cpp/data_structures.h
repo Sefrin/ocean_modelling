@@ -1,11 +1,13 @@
 #pragma once
+#include "constants.h"
 
+template <typename T>
 struct tuple4 
 {
-    double a,b,c,d;
+    T a,b,c,d;
 };
-
+template <typename T>
 struct tuple2
 {
-    double a,b;
+    T a,b;
 };
