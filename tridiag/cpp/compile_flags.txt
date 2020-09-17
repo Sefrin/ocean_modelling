@@ -1,0 +1,2 @@
+-std=c++11
+--cuda-gpu-arch=sm_75

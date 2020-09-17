@@ -1,10 +1,10 @@
 #pragma once
 
-#include<cuda_runtime.h>
-#include "constants.h"
-#include "data_structures.h"
+#include <cuda_runtime.h>
+#include "include/data_structures.hpp"
+#include "include/constants.hpp"
 
-__global__ void recurrence1_no_const(DTYPE* a, DTYPE* b, DTYPE* c, int num_chunks, int n)
+__global__ void recurrence1_no_const(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int num_chunks, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=num_chunks)
@@ -18,21 +18,21 @@ __global__ void recurrence1_no_const(DTYPE* a, DTYPE* b, DTYPE* c, int num_chunk
 
 }
 
-__global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, int num_chunks)
+__global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int num_chunks)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned int n = M;
+
     if (idx>=num_chunks)
         return;
-    const unsigned int chunk_start = idx * n;
+    const unsigned int chunk_start = idx * TRIDIAG_INNER_DIM;
     // const unsigned int chunk_end = chunk_start + n;
     
-    DTYPE as[n-1];
-    DTYPE bs[n];
-    DTYPE cs[n-1];
+    DTYPE as[TRIDIAG_INNER_DIM-1];
+    DTYPE bs[TRIDIAG_INNER_DIM];
+    DTYPE cs[TRIDIAG_INNER_DIM-1];
     
     #pragma unroll
-    for (int i = 0 ; i < n ; i++)
+    for (int i = 0 ; i < TRIDIAG_INNER_DIM ; i++)
     {
         int loc = chunk_start + i;
         as[i] = a[loc+1];
@@ -40,34 +40,27 @@ __global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, int num_chunks)
         cs[i] = c[loc];
     }
     #pragma unroll
-    for (int i = 0 ; i < n -1  ; i++)
+    for (int i = 0 ; i < TRIDIAG_INNER_DIM -1  ; i++)
     {
         bs[i+1] -= as[i]*cs[i]/bs[i];
     }
     #pragma unroll
-    for (int i = 0 ; i < n ; i++)
+    for (int i = 0 ; i < TRIDIAG_INNER_DIM ; i++)
     {
         b[chunk_start + i] = bs[i];
     }
 }
 __global__ 
-void firstMap(DTYPE* a, DTYPE* b, DTYPE* c, tuple4<DTYPE>* tups, int total_size, int n)
+void firstMap(DTYPE* a, DTYPE* b, DTYPE* c, tuple4<DTYPE>* tups, unsigned int total_size, unsigned int n)
 {
     const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
         return;
     tuple4<DTYPE> t;
-    if (idx % n == 0)
-    {
-        t.a = 1;
-        t.b = 0;
-        t.c = 0;
-        t.d = 1;
-    }
-    else
+    if (idx % n != 0)
     {
         t.a = b[idx];
-        t.b = -a[idx] * c[idx-1];
+        t.b = -(a[idx] * c[idx-1]);
         t.c = 1;
         t.d = 0;
     }
@@ -75,7 +68,7 @@ void firstMap(DTYPE* a, DTYPE* b, DTYPE* c, tuple4<DTYPE>* tups, int total_size,
 }
 
 __global__
-void generate_keys(unsigned int* keys, int total_size, int n)
+void generate_keys(unsigned int* keys, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -83,7 +76,7 @@ void generate_keys(unsigned int* keys, int total_size, int n)
     keys[idx] = idx / n;
 }
 
-__global__ void get_first_elem(DTYPE* in, DTYPE* out, int num_chunks, int n)
+__global__ void get_first_elem(DTYPE* in, DTYPE* out, unsigned int num_chunks, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=num_chunks)
@@ -91,7 +84,7 @@ __global__ void get_first_elem(DTYPE* in, DTYPE* out, int num_chunks, int n)
     out[idx] = in[idx * n];
 }
 
-__global__ void map2(tuple4<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* b0s, int total_size, int n)
+__global__ void map2(tuple4<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* b0s, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -103,7 +96,7 @@ __global__ void map2(tuple4<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* b
 }
 
 __global__
-void map3(tuple2<DTYPE>* tups, DTYPE* a, DTYPE* b, DTYPE* d, int total_size, int n)
+void map3(tuple2<DTYPE>* tups, DTYPE* a, DTYPE* b, DTYPE* d, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -123,7 +116,7 @@ void map3(tuple2<DTYPE>* tups, DTYPE* a, DTYPE* b, DTYPE* d, int total_size, int
     tups[idx] = t;
 }
 
-__global__ void map4(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* d, DTYPE* d0s, int total_size, int n)
+__global__ void map4(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* d, DTYPE* d0s, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -133,7 +126,7 @@ __global__ void map4(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* d, DTYPE* d
     d[idx] = t.a + t.b*d0;
 }
 
-__global__ void getLastDiv(DTYPE* d, DTYPE* b, DTYPE* lastDiv, int num_chunks, int n)
+__global__ void getLastDiv(DTYPE* d, DTYPE* b, DTYPE* lastDiv, unsigned int num_chunks, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=num_chunks)
@@ -142,7 +135,7 @@ __global__ void getLastDiv(DTYPE* d, DTYPE* b, DTYPE* lastDiv, int num_chunks, i
     lastDiv[idx] = d[n1]/b[n1]; 
 }
 
-__global__ void map5(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* c, DTYPE* d, int total_size, int n)
+__global__ void map5(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* c, DTYPE* d, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -163,7 +156,7 @@ __global__ void map5(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* c
     tups[idx] = t;
 }
 
-__global__ void map6(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* lastDivs, DTYPE* d, int total_size, int n)
+__global__ void map6(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* lastDivs, DTYPE* d, unsigned int total_size, unsigned int n)
 {
     const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx>=total_size)
@@ -217,29 +210,28 @@ void execute(
     DTYPE *solution,
     int total_size
 ){
-    // const int m = M;
-    const size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * M;
+    const size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * TRIDIAG_INNER_DIM;
 
     if (idx >= total_size) {
         return;
     }
 
-    DTYPE cp[M];
-    DTYPE dp[M];
+    DTYPE cp[TRIDIAG_INNER_DIM];
+    DTYPE dp[TRIDIAG_INNER_DIM];
 
     cp[0] = c[idx] / b[idx];
     dp[0] = d[idx] / b[idx];
     DTYPE norm_factor;
     #pragma unroll
-    for (ptrdiff_t j = 1; j < M; ++j) {
+    for (ptrdiff_t j = 1; j < TRIDIAG_INNER_DIM; ++j) {
         norm_factor = 1.0 / (b[idx+j] - a[idx+j] * cp[j-1]);
         cp[j] = c[idx+j] * norm_factor;
         dp[j] = (d[idx+j] - a[idx+j] * dp[j-1]) * norm_factor;
     }
 
-    solution[idx + M-1] = dp[M-1];
+    solution[idx + TRIDIAG_INNER_DIM-1] = dp[TRIDIAG_INNER_DIM-1];
     #pragma unroll
-    for (ptrdiff_t j=M-2; j >= 0; --j) {
+    for (ptrdiff_t j=TRIDIAG_INNER_DIM-2; j >= 0; --j) {
         solution[idx + j] = dp[j] - cp[j] * solution[idx + j+1];
     }
 }
