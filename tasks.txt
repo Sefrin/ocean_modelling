@@ -1,0 +1,4 @@
+-- implement generic float/double
+-- implement recurrent sequential thing in futhark
+-- M constant in futhark and M variable in cuda
+-- clean up cuda code
