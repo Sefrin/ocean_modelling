@@ -1,4 +1,7 @@
--- implement generic float/double
--- implement recurrent sequential thing in futhark
--- M constant in futhark and M variable in cuda
--- clean up cuda code
+DONE:
+-- implement generic float/double | OK
+-- M constant in futhark and M variable in cuda | OK
+-- clean up cuda code | OKish I guess
+
+TODO:
+-- implement recurrent sequential thing (execute kernel) in futhark
