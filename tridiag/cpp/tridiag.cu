@@ -105,10 +105,10 @@ inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple
 
     // recurrence2
     
-    get_first_elem<<<num_blocks_chunk, BLOCK_SIZE>>>(d, firstBuf, num_chunks, n);
+    get_first_elem_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, firstBuf, num_chunks, n);
     SYNCPEEK
 
-    map3<<<num_blocks, BLOCK_SIZE>>>(tups2, a, b, d, total_size, n);
+    create_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, a, b, d, total_size, n);
     SYNCPEEK
 
     auto assOp2 = [] __device__ (tuple2<DTYPE> a, tuple2<DTYPE> b) {
@@ -124,20 +124,20 @@ inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
 
-    map4<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
+    combine_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
     SYNCPEEK
 
     // recurrence 3
-    getLastDiv<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
+    get_last_yb_div_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
     SYNCPEEK
 
-    map5<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
+    create_tuple2_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
     SYNCPEEK
 
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
 
-    map6<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
+    combine_tuple2_and_reverse_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
     SYNCPEEK
 }
 
@@ -149,7 +149,7 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
     int num_blocks = (total_size + BLOCK_SIZE-1) / BLOCK_SIZE;
     int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
 
-    firstMap<<<num_blocks, BLOCK_SIZE>>>(a, b, c, tups, total_size, n);
+    create_tuple4_r1<<<num_blocks, BLOCK_SIZE>>>(a, b, c, tups, total_size, n);
     SYNCPEEK
 
     // tuple4<DTYPE>* test = new tuple4<DTYPE>[total_size];
@@ -169,7 +169,7 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
 
 
 
-    get_first_elem<<<num_blocks_chunk, BLOCK_SIZE>>>(b, firstBuf, num_chunks, n);
+    get_first_elem_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(b, firstBuf, num_chunks, n);
     SYNCPEEK
 
 
@@ -198,14 +198,14 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr, tup_ptr, eq, assOp1);
     SYNCPEEK
 
-    map2<<<num_blocks, BLOCK_SIZE>>>(tups, keys, b, firstBuf, total_size, n);
+    combine_tuple4_r1<<<num_blocks, BLOCK_SIZE>>>(tups, keys, b, firstBuf, total_size, n);
     SYNCPEEK
     // recurrence2
     
-    get_first_elem<<<num_blocks_chunk, BLOCK_SIZE>>>(d, firstBuf, num_chunks, n);
+    get_first_elem_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, firstBuf, num_chunks, n);
     SYNCPEEK
 
-    map3<<<num_blocks, BLOCK_SIZE>>>(tups2, a, b, d, total_size, n);
+    create_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, a, b, d, total_size, n);
     SYNCPEEK
 
     auto assOp2 = [] __device__ (tuple2<DTYPE> a, tuple2<DTYPE> b) {
@@ -218,19 +218,19 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
 
-    map4<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
+    combine_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
     SYNCPEEK
     // recurrence 3
-    getLastDiv<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
+    get_last_yb_div_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
     SYNCPEEK
 
-    map5<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
+    create_tuple2_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
     SYNCPEEK
 
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
 
-    map6<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
+    combine_tuple2_and_reverse_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
     SYNCPEEK
 }
 

@@ -50,21 +50,20 @@ __global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int num_chunk
         b[chunk_start + i] = bs[i];
     }
 }
-__global__ 
-void firstMap(DTYPE* a, DTYPE* b, DTYPE* c, tuple4<DTYPE>* tups, unsigned int total_size, unsigned int n)
-{
-    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    tuple4<DTYPE> t;
-    if (idx % n != 0)
-    {
-        t.a = b[idx];
-        t.b = -(a[idx] * c[idx-1]);
-        t.c = 1;
-        t.d = 0;
-    }
-    tups[idx] = t;
+__global__ void create_tuple4_r1(DTYPE *a, DTYPE *b, DTYPE *c,
+                                 tuple4<DTYPE> *tups, unsigned int total_size,
+                                 unsigned int n) {
+  const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  tuple4<DTYPE> t;
+  if (idx % n != 0) {
+    t.a = b[idx];
+    t.b = -(a[idx] * c[idx - 1]);
+    t.c = 1;
+    t.d = 0;
+  }
+  tups[idx] = t;
 }
 
 __global__
@@ -76,97 +75,97 @@ void generate_keys(unsigned int* keys, unsigned int total_size, unsigned int n)
     keys[idx] = idx / n;
 }
 
-__global__ void get_first_elem(DTYPE* in, DTYPE* out, unsigned int num_chunks, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=num_chunks)
-        return;
-    out[idx] = in[idx * n];
+__global__ void get_first_elem_in_chunk(DTYPE *in, DTYPE *out,
+                                        unsigned int num_chunks,
+                                        unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_chunks)
+    return;
+  out[idx] = in[idx * n];
 }
 
-__global__ void map2(tuple4<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* b0s, unsigned int total_size, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    tuple4<DTYPE> t = tups[idx];
-    DTYPE b0 = b0s[keys[idx]];
-    b[idx] = (t.a*b0 + t.b) / (t.c*b0 + t.d);
-    
+__global__ void combine_tuple4_r1(tuple4<DTYPE> *tups, unsigned int *keys,
+                                  DTYPE *b, DTYPE *b0s, unsigned int total_size,
+                                  unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  tuple4<DTYPE> t = tups[idx];
+  DTYPE b0 = b0s[keys[idx]];
+  b[idx] = (t.a * b0 + t.b) / (t.c * b0 + t.d);
 }
 
-__global__
-void map3(tuple2<DTYPE>* tups, DTYPE* a, DTYPE* b, DTYPE* d, unsigned int total_size, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    tuple2<DTYPE> t;
-    if (idx % n == 0)
-    {
-        t.a = 0;
-        t.b = 1;
+__global__ void create_tuple2_r2(tuple2<DTYPE> *tups, DTYPE *a, DTYPE *b,
+                                 DTYPE *d, unsigned int total_size,
+                                 unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  tuple2<DTYPE> t;
+  if (idx % n == 0) {
+    t.a = 0;
+    t.b = 1;
 
-    }
-    else
-    {
-        t.a = d[idx];
-        t.b = -a[idx]/b[idx-1];
-    }
-    tups[idx] = t;
+  } else {
+    t.a = d[idx];
+    t.b = -a[idx] / b[idx - 1];
+  }
+  tups[idx] = t;
 }
 
-__global__ void map4(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* d, DTYPE* d0s, unsigned int total_size, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    tuple2<DTYPE> t = tups[idx];
-    DTYPE d0 = d0s[keys[idx]];
-    d[idx] = t.a + t.b*d0;
+__global__ void combine_tuple2_r2(tuple2<DTYPE> *tups, unsigned int *keys,
+                                  DTYPE *d, DTYPE *d0s, unsigned int total_size,
+                                  unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  tuple2<DTYPE> t = tups[idx];
+  DTYPE d0 = d0s[keys[idx]];
+  d[idx] = t.a + t.b * d0;
 }
 
-__global__ void getLastDiv(DTYPE* d, DTYPE* b, DTYPE* lastDiv, unsigned int num_chunks, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=num_chunks)
-        return;
-    const int n1 = idx * n + (n-1);
-    lastDiv[idx] = d[n1]/b[n1]; 
+__global__ void get_last_yb_div_in_chunk(DTYPE *d, DTYPE *b, DTYPE *lastDiv,
+                                         unsigned int num_chunks,
+                                         unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_chunks)
+    return;
+  const int n1 = idx * n + (n - 1);
+  lastDiv[idx] = d[n1] / b[n1];
 }
 
-__global__ void map5(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* b, DTYPE* c, DTYPE* d, unsigned int total_size, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    const unsigned int revIdx = n * keys[idx] + (n - (idx%n) - 1);
-    tuple2<DTYPE> t;
-    if (idx % n == 0)
-    {
-        t.a = 0;
-        t.b = 1;
+__global__ void create_tuple2_r3(tuple2<DTYPE> *tups, unsigned int *keys,
+                                 DTYPE *b, DTYPE *c, DTYPE *d,
+                                 unsigned int total_size, unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  const unsigned int revIdx = n * keys[idx] + (n - (idx % n) - 1);
+  tuple2<DTYPE> t;
+  if (idx % n == 0) {
+    t.a = 0;
+    t.b = 1;
 
-    }
-    else
-    {
-        t.a = d[revIdx]/b[revIdx];
-        t.b = -c[revIdx]/b[revIdx];
-    }
-    tups[idx] = t;
+  } else {
+    t.a = d[revIdx] / b[revIdx];
+    t.b = -c[revIdx] / b[revIdx];
+  }
+  tups[idx] = t;
 }
 
-__global__ void map6(tuple2<DTYPE>* tups, unsigned int* keys, DTYPE* lastDivs, DTYPE* d, unsigned int total_size, unsigned int n)
-{
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx>=total_size)
-        return;
-    unsigned int k = keys[idx];
-    const unsigned int revIdx = n * k + (n - (idx%n) - 1);
-    tuple2<DTYPE> t = tups[idx];
-    d[revIdx] =  t.a + t.b*lastDivs[k];
+__global__ void combine_tuple2_and_reverse_r3(tuple2<DTYPE> *tups,
+                                              unsigned int *keys,
+                                              DTYPE *lastDivs, DTYPE *d,
+                                              unsigned int total_size,
+                                              unsigned int n) {
+  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_size)
+    return;
+  unsigned int k = keys[idx];
+  const unsigned int revIdx = n * k + (n - (idx % n) - 1);
+  tuple2<DTYPE> t = tups[idx];
+  d[revIdx] = t.a + t.b * lastDivs[k];
 }
-
 
 __global__
 void execute_no_const(

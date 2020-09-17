@@ -1,7 +1,7 @@
 #define BLOCK_SIZE 256
 #define TRIDIAG_INNER_DIM 115
 // #define TOTAL_SIZE 6624000
-#define DTYPE float
+#define DTYPE double
 #define ERRCHK 0
 
 #if ERRCHK
