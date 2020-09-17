@@ -1,2 +1,2 @@
 all:
-	nvcc -O3 --extended-lambda -lineinfo -o tridiag tridiag.cu
+	nvcc -gencode=arch=compute_75,code=compute_75 -lineinfo --extended-lambda -o tridiag tridiag.cu

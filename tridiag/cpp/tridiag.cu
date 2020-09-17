@@ -10,7 +10,7 @@
 
 #include <thrust/scan.h>
 #include <thrust/device_ptr.h>
-
+#include <chrono>
 #include <sys/time.h>
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -30,8 +30,6 @@ int timeval_substract(struct timeval* result, struct timeval* t2, struct timeval
   result->tv_usec = diff % resolution;
   return (diff<0);
 }
-
-#define BLOCK_SIZE 256
 
 void tridiag_naive(double* a, double* b, double* c, double* d, double* out, int num_chunks, int n)
 {
@@ -58,7 +56,7 @@ void tridiag_naive(double* a, double* b, double* c, double* d, double* out, int 
 }
 
 
-void tridiag_parallel(double* a, double* b, double* c, double* d, double* out, int num_chunks, int n, int total_size)
+inline void tridiag_parallel(double* a, double* b, double* c, double* d, double* out, int num_chunks, int n, int total_size)
 {
     
     int num_blocks = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE; 
@@ -70,38 +68,40 @@ void tridiag_parallel(double* a, double* b, double* c, double* d, double* out, i
 
 
 
-void tridiag_thrust(double* a, double* b, double* c, double* d, tuple4* tups, tuple2* tups2, unsigned int* keys, double* firstBuf, int num_chunks, int n, int total_size)
+inline void tridiag_thrust(double* a, double* b, double* c, double* d, tuple4* tups, tuple2* tups2, unsigned int* keys, double* firstBuf, int num_chunks, int n, int total_size)
 {
     // recurrence 1
     int num_blocks = (total_size + BLOCK_SIZE-1) / BLOCK_SIZE;
-    map1<<<num_blocks, BLOCK_SIZE>>>(a,b,c,tups,total_size,n);
+    // map1<<<num_blocks, BLOCK_SIZE>>>(a,b,c,tups,total_size,n);
 
     int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
     generate_keys<<<num_blocks, BLOCK_SIZE>>>(keys, total_size, n);
 
-    get_first<<<num_blocks_chunk, BLOCK_SIZE>>>(b, firstBuf, num_chunks, n);
+    // get_first<<<num_blocks_chunk, BLOCK_SIZE>>>(b, firstBuf, num_chunks, n);
 
-    auto assOp1 = [] __device__ (tuple4 a, tuple4 b) {
-        double value = 1.0/(a.a * b.a);
-        tuple4 t;
-        t.a = (b.a*a.a + b.b*a.c)*value;
-        t.b = (b.a*a.b + b.b*a.d)*value;
-        t.c = (b.c*a.a + b.d*a.c)*value;
-        t.d = (b.c*a.b + b.d*a.d)*value;
-        return t; 
-    };
+    // auto assOp1 = [] __device__ (tuple4 a, tuple4 b) {
+    //     double value = 1.0/(a.a * b.a);
+    //     tuple4 t;
+    //     t.a = (b.a*a.a + b.b*a.c)*value;
+    //     t.b = (b.a*a.b + b.b*a.d)*value;
+    //     t.c = (b.c*a.a + b.d*a.c)*value;
+    //     t.d = (b.c*a.b + b.d*a.d)*value;
+    //     return t; 
+    // };
     thrust::device_ptr<unsigned int> keys_ptr(keys);
     thrust::equal_to<unsigned int> eq;
-    thrust::device_ptr<tuple4> tup_ptr(tups);
+    // thrust::device_ptr<tuple4> tup_ptr(tups);
     // thrust::device_ptr<tuple4> scan_ptr(scan1);
     // tuple4 init_tup;
     // init_tup.a = 1;
     // init_tup.b = 0;
     // init_tup.c = 0;
     // init_tup.d = 1;
-    thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr, tup_ptr, eq, assOp1);
-
-    map2<<<num_blocks, BLOCK_SIZE>>>(tups, b, firstBuf, total_size, n);
+    // thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr, tup_ptr, eq, assOp1);
+    recurrence1<<<num_blocks_chunk, BLOCK_SIZE>>>(a,b,c,num_chunks);
+    // gpuErrchk(cudaDeviceSynchronize());
+    // gpuErrchk(cudaPeekAtLastError());
+    map2<<<num_blocks, BLOCK_SIZE>>>(tups, keys, b, firstBuf, total_size, n);
 
     // recurrence2
     
@@ -122,16 +122,16 @@ void tridiag_thrust(double* a, double* b, double* c, double* d, tuple4* tups, tu
     // init_tup2.b = 1;
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
 
-    map4<<<num_blocks, BLOCK_SIZE>>>(tups2, d, firstBuf, total_size, n);
+    map4<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
 
     // recurrence 3
     getLastDiv<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
 
-    map5<<<num_blocks, BLOCK_SIZE>>>(tups2, b, c, d, total_size, n);
+    map5<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
 
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
 
-    map6<<<num_blocks, BLOCK_SIZE>>>(tups2, firstBuf, d, total_size, n);
+    map6<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
 
 }
 
@@ -140,7 +140,7 @@ void tridiag_thrust(double* a, double* b, double* c, double* d, tuple4* tups, tu
 int main()
 {
     const int num_chunks = 57600;
-    const int n = 115;
+    const int n = M;
     const int total_size = n*num_chunks;
     double* a = new double[total_size];
     double* b = new double[total_size];
@@ -188,36 +188,39 @@ int main()
     cudaMalloc((void**)&tups2, total_size*sizeof(tuple2));
     cudaMalloc((void**)&keys, total_size*sizeof(unsigned int));
     cudaMalloc((void**)&firstBuf, num_chunks*sizeof(double));
-    const int GPU_RUNS = 1;
-    unsigned long int elapsed; struct timeval t_start, t_end, t_diff;
-
-    gettimeofday(&t_start, NULL);
+    const int GPU_RUNS = 20;
+    // unsigned long int elapsed; struct timeval t_start, t_end, t_diff;
+    cudaDeviceSynchronize();
+    auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0 ; i < GPU_RUNS ; i++)
         tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size);
     cudaDeviceSynchronize();
-    gettimeofday(&t_end, NULL);
+    auto finish = std::chrono::high_resolution_clock::now();
     // -----------------------------
-  
-    timeval_substract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / GPU_RUNS;
-    printf("GPU took %d microseconds (%.2fms)\n",elapsed,elapsed/1000.0);
-
-    gettimeofday(&t_start, NULL);
+    
+    // timeval_substract(&t_diff, &t_end, &t_start);
+    auto elapsed =  std::chrono::duration_cast<std::chrono::microseconds>(finish - start).count() / GPU_RUNS; //(t_diff.tv_sec*1e6+t_diff.tv_usec) / GPU_RUNS;
+    printf("GPU took %lu microseconds (%.2fms)\n",elapsed,elapsed/1000.0);
+    cudaDeviceSynchronize();
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0 ; i < GPU_RUNS ; i++)
         tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
     cudaDeviceSynchronize();
-    gettimeofday(&t_end, NULL);
+    finish = std::chrono::high_resolution_clock::now();
     // -----------------------------
   
-    timeval_substract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / GPU_RUNS;
-    printf("thrust took %d microseconds (%.2fms)\n",elapsed,elapsed/1000.0);
+    // timeval_substract(&t_diff, &t_end, &t_start);
 
-    
-    
-    
-    gpuErrchk(cudaDeviceSynchronize());
-    gpuErrchk(cudaPeekAtLastError());
+    elapsed = std::chrono::duration_cast<std::chrono::microseconds>(finish - start).count() / GPU_RUNS; //t_diff.tv_sec*1e6+t_diff.tv_usec) / GPU_RUNS;
+    printf("thrust took %lu microseconds (%.2fms)\n",elapsed,elapsed/1000.0);
+
+    int device;
+    cudaGetDevice(&device);
+
+    struct cudaDeviceProp props;
+    cudaGetDeviceProperties(&props, device);
+    std::cout << props.name << std::endl;
+
     cudaMemcpy(out_parallel, d_dev, mem_size, cudaMemcpyDeviceToHost);
 
     bool valid = true;
