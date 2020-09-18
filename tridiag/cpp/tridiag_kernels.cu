@@ -147,8 +147,9 @@ __global__ void create_tuple2_r3(tuple2<DTYPE> *tups, unsigned int *keys,
     t.b = 1;
 
   } else {
-    t.a = d[revIdx] / b[revIdx];
-    t.b = -c[revIdx] / b[revIdx];
+    DTYPE rb = b[revIdx];
+    t.a = d[revIdx] / rb;
+    t.b = -c[revIdx] / rb;
   }
   tups[idx] = t;
 }

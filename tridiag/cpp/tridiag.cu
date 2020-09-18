@@ -24,7 +24,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-#define BENCH(PROGRAM, NAME, GPU_RUNS) {unsigned long int elapsed; struct timeval t_start, t_end, t_diff;\
+#define BENCH(PROGRAM, NAME, GPU_RUNS) { struct timeval t_start, t_end, t_diff;\
     cudaDeviceSynchronize(); \
     gettimeofday(&t_start, NULL);   \
     for (int i = 0 ; i < GPU_RUNS ; i++)  \
@@ -143,32 +143,27 @@ inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple
 
 
 
-inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, int num_chunks, int n, int total_size)
+inline int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, int num_chunks, int n, int total_size)
 {
     // recurrence 1
     int num_blocks = (total_size + BLOCK_SIZE-1) / BLOCK_SIZE;
     int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
 
+    int mem_usage = 0;
+    int dsize = sizeof(DTYPE);
+    mem_usage += (3*dsize + 4*dsize) * total_size;
+    // MEMUSAGE: R: 3*DTYPE * total_size  W: 4*DTYPE * total_size
     create_tuple4_r1<<<num_blocks, BLOCK_SIZE>>>(a, b, c, tups, total_size, n);
     SYNCPEEK
 
-    // tuple4<DTYPE>* test = new tuple4<DTYPE>[total_size];
-    // // DTYPE* test2 = new DTYPE[total_size];
-    // // cudaMemcpy(test, firstBuf, num_chunks * sizeof(DTYPE), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(test, tups, total_size * sizeof(tuple4<DTYPE>), cudaMemcpyDeviceToHost);
- 
-    // for (int i = 0 ; i < 500 ; i +=1)
-    // {
-    //     std::cout << test[i].a << " " << test[i].b << " " << test[i].c << " " << test[i].d << std::endl;
- 
-    // }
-
-    
+    // MEMUSAGE: R: total_size * 4 bytes W: 0
+    mem_usage += (sizeof(uint)) * total_size;
     generate_keys<<<num_blocks, BLOCK_SIZE>>>(keys, total_size, n);
     SYNCPEEK
 
 
-
+    // R: num_chunks * DTYPE, W: num_chunks * DTYPE
+    mem_usage += (2*dsize) * num_chunks;
     get_first_elem_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(b, firstBuf, num_chunks, n);
     SYNCPEEK
 
@@ -194,17 +189,21 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
     thrust::device_ptr<unsigned int> keys_ptr(keys);
     thrust::equal_to<unsigned int> eq;
     thrust::device_ptr<tuple4<DTYPE>> tup_ptr(tups);
-   
+    // MEMUSAGE: R: (4*uint + 4*DTYPE) totalsize, W: 4*DTYPE
+    mem_usage += (4*sizeof(uint) + 4*dsize * 4*dsize) * total_size;
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr, tup_ptr, eq, assOp1);
     SYNCPEEK
 
+    mem_usage += (4*dsize + sizeof(uint) + dsize + dsize) * total_size;
     combine_tuple4_r1<<<num_blocks, BLOCK_SIZE>>>(tups, keys, b, firstBuf, total_size, n);
     SYNCPEEK
     // recurrence2
-    
+
+    mem_usage += (2*dsize) * num_chunks;
     get_first_elem_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, firstBuf, num_chunks, n);
     SYNCPEEK
 
+    mem_usage += (3*dsize + 2*dsize) * total_size;
     create_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, a, b, d, total_size, n);
     SYNCPEEK
 
@@ -215,23 +214,29 @@ inline void tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>
         return t; 
     };
     thrust::device_ptr<tuple2<DTYPE>> tup_ptr2(tups2);
+    mem_usage += (2*dsize + sizeof(uint) + 2*dsize) * total_size;
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
 
+    mem_usage += (2*dsize + sizeof(uint) + dsize + dsize) * total_size;
     combine_tuple2_r2<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, d, firstBuf, total_size, n);
     SYNCPEEK
     // recurrence 3
+    mem_usage += (3*dsize) * total_size;
     get_last_yb_div_in_chunk<<<num_blocks_chunk, BLOCK_SIZE>>>(d, b, firstBuf, num_chunks, n);
     SYNCPEEK
 
+    mem_usage += (sizeof(uint) + 3*dsize + 2*dsize) * total_size;
     create_tuple2_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, b, c, d, total_size, n);
     SYNCPEEK
 
+    mem_usage += (2*dsize + sizeof(uint) + 2*dsize) * total_size;
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr2, tup_ptr2, eq, assOp2);
     SYNCPEEK
-
+    mem_usage += (sizeof(uint) + 2*dsize + dsize + dsize) * total_size;
     combine_tuple2_and_reverse_r3<<<num_blocks, BLOCK_SIZE>>>(tups2, keys, firstBuf, d, total_size, n);
     SYNCPEEK
+    return mem_usage;
 }
 
 void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
@@ -349,7 +354,7 @@ int main(int argc, char** argv)
     gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
-    tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
+    int flat_mem = tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
     gpuErrchk(cudaMemcpy(out_parallel, d_dev, mem_size, cudaMemcpyDeviceToHost));
     std::cout << "Flat version: ";
     verify(out_naive, out_parallel, total_size);
@@ -374,13 +379,17 @@ int main(int argc, char** argv)
 
 
     const int GPU_RUNS = 20;
-    
+    unsigned long int elapsed;
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size), "Primitive parallel version", GPU_RUNS);
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size, true), "Primitive parallel version using const", GPU_RUNS);
     BENCH(tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version", GPU_RUNS);
+    
+    double elapsed_sec = (double) elapsed / 1000000.0;
+    std::cout << "Bandwith: " << ((double)flat_mem / (1024*1024*1024))  / elapsed_sec << "GB/s" << std::endl;
+
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version with sequential first recurrence", GPU_RUNS);
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size, true), "Flat version with sequential first recurrence using const", GPU_RUNS);
- 
+        
 
     gpuErrchk(cudaFree(a_dev));
     gpuErrchk(cudaFree(b_dev));
