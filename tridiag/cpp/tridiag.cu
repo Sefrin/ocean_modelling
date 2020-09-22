@@ -44,6 +44,32 @@ int timeval_substract(struct timeval* result, struct timeval* t2, struct timeval
   return (diff<0);
 }
 
+void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
+{
+    bool valid = true;
+    double totalerr = 0;
+    double maxabs = 0;
+    double maxrel = 0;
+    for (unsigned int i = 0 ; i < total_size ; i++)
+    {
+        double abs = fabs(out_naive[i] - out_parallel[i]);
+        totalerr += abs;
+        double rel = abs / out_naive[i];
+        if (rel > maxrel)
+                maxrel = rel;
+        if (abs > maxabs)
+                maxabs = abs;
+        if (abs >= 0.01)
+        {
+            valid = false;
+        }
+    }
+    if (valid)
+        std::cout << "\nVALID \n- Total abs error: " << totalerr << "\n - Max abs error: " << maxabs << "\n - Max rel error: " << maxrel << "\n" << std::endl;
+    else
+        std::cout << "\nINVALID \n- Total abs error: " << totalerr << "\n - Max abs error: " << maxabs << "\n- Max rel error: " << maxrel << "\n" << std::endl;
+}
+
 void transposeMats(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d,
     DTYPE* a_t, DTYPE* b_t, DTYPE* c_t, DTYPE* d_t,
      int xdim, int ydim, int total_size)
@@ -112,13 +138,20 @@ inline void tridiag_parallel_coalesced(DTYPE* a_dev, DTYPE* b_dev, DTYPE* c_dev,
     DTYPE* a_dev_t, DTYPE* b_dev_t, DTYPE* c_dev_t, DTYPE* d_dev_t, DTYPE* solution, DTYPE* solution_t,
      int n, int num_chunks, int total_size)
 {
-    // transposeMats(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, n, num_chunks, total_size);
-    transposeMat(a_dev, a_dev_t, n, num_chunks, total_size);
-    transposeMat(b_dev, b_dev_t, n, num_chunks, total_size);
-    transposeMat(c_dev, c_dev_t, n, num_chunks, total_size);
-    transposeMat(d_dev, d_dev_t, n, num_chunks, total_size);
+    transposeMats(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, n, num_chunks, total_size);
     unsigned int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
-    execute_coalesced<<<num_blocks_chunk, BLOCK_SIZE>>>(a_dev_t, b_dev_t, c_dev_t, d_dev_t, solution, num_chunks, total_size);
+    execute_coalesced_const<<<num_blocks_chunk, BLOCK_SIZE>>>(a_dev_t, b_dev_t, c_dev_t, d_dev_t, solution, num_chunks);
+    SYNCPEEK
+    transposeMat(solution, solution_t, num_chunks, n, total_size);
+}
+
+inline void tridiag_parallel_coalesced_no_const(DTYPE* a_dev, DTYPE* b_dev, DTYPE* c_dev, DTYPE* d_dev,
+    DTYPE* a_dev_t, DTYPE* b_dev_t, DTYPE* c_dev_t, DTYPE* d_dev_t, DTYPE* solution, DTYPE* solution_t,
+     int n, int num_chunks, int total_size)
+{
+    transposeMats(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, n, num_chunks, total_size);
+    unsigned int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
+    execute_coalesced<<<num_blocks_chunk, BLOCK_SIZE>>>(a_dev_t, b_dev_t, c_dev_t, d_dev_t, solution, n, num_chunks);
     SYNCPEEK
     transposeMat(solution, solution_t, num_chunks, n, total_size);
 }
@@ -278,36 +311,7 @@ inline unsigned long int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, 
     return mem_usage;
 }
 
-void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
-{
-    bool valid = true;
-    double totalerr = 0;
-    double maxabs = 0;
-    double maxrel = 0;
-    for (unsigned int i = 0 ; i < total_size ; i++)
-    {
-        double abs = fabs(out_naive[i] - out_parallel[i]);
-        totalerr += abs;
-        double rel = abs / out_naive[i];
-        if (rel > maxrel)
-                maxrel = rel;
-        if (abs > maxabs)
-                maxabs = abs;
-        if (abs >= 0.01)
-        {
-            
-            // std::cout << i << std::endl;
-            // std::cout << out_naive[i] << std::endl;
-            // std::cout << out_parallel[i] << std::endl;
-            // std::cout << fabs(out_naive[i] - out_parallel[i]) << std::endl;
-            valid = false;
-        }
-    }
-    if (valid)
-        std::cout << "\nVALID \n- Total abs error: " << totalerr << "\n - Max abs error: " << maxabs << "\n - Max rel error: " << maxrel << "\n" << std::endl;
-    else
-        std::cout << "\nINVALID \n- Total abs error: " << totalerr << "\n - Max abs error: " << maxabs << "\n- Max rel error: " << maxrel << "\n" << std::endl;
-}
+
 
 
 
@@ -361,7 +365,7 @@ int main(int argc, char** argv)
     DTYPE* firstBuf;
 
     const unsigned int mem_size = total_size*sizeof(DTYPE);
-    std::cout << "Need " << (float)(5*mem_size
+    std::cout << "Need " << (float)(10*mem_size
         + total_size*sizeof(tuple4<DTYPE>) 
         + total_size*sizeof(tuple2<DTYPE>)
         + total_size*sizeof(unsigned int)
@@ -407,6 +411,15 @@ int main(int argc, char** argv)
     gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
+    tridiag_parallel_coalesced_no_const(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size);
+    gpuErrchk(cudaMemcpy(out_parallel, out_dev_t, mem_size, cudaMemcpyDeviceToHost));
+    std::cout << "Naive parallel coalesced version: ";
+    verify(out_naive, out_parallel, total_size);
+
+    gpuErrchk(cudaMemcpy(a_dev, a, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
     tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size);
     gpuErrchk(cudaMemcpy(out_parallel, out_dev_t, mem_size, cudaMemcpyDeviceToHost));
     std::cout << "Naive parallel coalesced version with const N: ";
@@ -445,6 +458,7 @@ int main(int argc, char** argv)
     unsigned long int elapsed;
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size), "Primitive parallel version", GPU_RUNS);
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size, true), "Primitive parallel version using const", GPU_RUNS);
+    BENCH(tridiag_parallel_coalesced_no_const(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, num_chunks, n, total_size), "Primitive parallel coalesced version", GPU_RUNS);
     BENCH(tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, num_chunks, n, total_size), "Primitive parallel coalesced version using const", GPU_RUNS);
     BENCH(tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version", GPU_RUNS);
     

@@ -1,4 +1,4 @@
-type DTYPE = f64
+type DTYPE = f32
 let INNER_DIM : i32 = 115
 
 let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DTYPE =
@@ -68,7 +68,7 @@ let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DT
 -- ==
 -- entry: tridagNested
 --
--- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
+-- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
 entry tridagNested [n][m] (a: [n][m]DTYPE) (b: [n][m]DTYPE) (c: [n][m]DTYPE) (y: [n][m]DTYPE): *[n][m]DTYPE =
    map4 (\a b c y -> tridagPar (a,b,c,y)) a b c y
 
@@ -142,6 +142,56 @@ let tridagParConst [INNER_DIM] (a:  [INNER_DIM]DTYPE, b: [INNER_DIM]DTYPE, c: [I
 -- ==
 -- entry: tridagNestedConst
 --
--- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
+-- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
 entry tridagNestedConst [n][INNER_DIM] (a: [n][INNER_DIM]DTYPE) (b: [n][INNER_DIM]DTYPE) (c: [n][INNER_DIM]DTYPE) (y: [n][INNER_DIM]DTYPE): *[n][INNER_DIM]DTYPE =
    map4 (\a b c y -> tridagPar (a,b,c,y)) a b c y
+
+
+
+let tridagSeq [m] (a:  [m]DTYPE, b: [m]DTYPE, c: [m]DTYPE, y: [m]DTYPE ): *[m]DTYPE =
+   let cp = map (\i -> if i==0 then c[0]/b[0] else 0) (indices c)
+   let yp = map (\i -> if i==0 then y[0]/b[0] else 0) (indices y)
+   let (cp_full, yp_full) = 
+      loop (cp, yp) for i in 1..<m do
+         let norm_factor = 1.0 / (b[i] - a[i] * cp[i-1])
+         let cp[i] = c[i] * norm_factor
+         let yp[i] = (y[i] - a[i] * yp[i-1]) * norm_factor
+         in (cp, yp)
+   let solution = replicate m (0.0 : DTYPE)
+   let solution[m-1] = yp_full[m-1]
+   let inds = reverse (init (indices y))
+   in loop (solution) for i in inds do
+      let solution[i] = yp_full[i] - cp_full[i] * solution[i+1]
+      in solution   
+
+let tridagSeqConst [INNER_DIM] (a:  [INNER_DIM]DTYPE, b: [INNER_DIM]DTYPE, c: [INNER_DIM]DTYPE, y: [INNER_DIM]DTYPE ): *[INNER_DIM]DTYPE =
+   let cp = map (\i -> if i==0 then c[0]/b[0] else 0) (indices c)
+   let yp = map (\i -> if i==0 then y[0]/b[0] else 0) (indices y)
+   let (cp_full, yp_full) = 
+      loop (cp, yp) for i in 1..<INNER_DIM do
+         let norm_factor = 1.0 / (b[i] - a[i] * cp[i-1])
+         let cp[i] = c[i] * norm_factor
+         let yp[i] = (y[i] - a[i] * yp[i-1]) * norm_factor
+         in (cp, yp)
+   let solution = replicate INNER_DIM (0.0 : DTYPE)
+   let solution[INNER_DIM-1] = yp_full[INNER_DIM-1]
+   let inds = reverse (init (indices y))
+   in loop (solution) for i in inds do
+      let solution[i] = yp_full[i] - cp_full[i] * solution[i+1]
+      in solution   
+   
+
+-- ==
+-- entry: tridagNestedSeqConst
+--
+-- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+entry tridagNestedSeqConst [n][INNER_DIM] (a: [n][INNER_DIM]DTYPE) (b: [n][INNER_DIM]DTYPE) (c: [n][INNER_DIM]DTYPE) (y: [n][INNER_DIM]DTYPE): *[n][INNER_DIM]DTYPE =
+   map4 (\a b c y -> tridagSeqConst (a,b,c,y)) a b c y
+
+-- ==
+-- entry: tridagNestedSeq
+--
+-- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+entry tridagNestedSeq [n][m] (a: [n][m]DTYPE) (b: [n][m]DTYPE) (c: [n][m]DTYPE) (y: [n][m]DTYPE): *[n][m]DTYPE =
+   map4 (\a b c y -> tridagSeq (a,b,c,y)) a b c y
+

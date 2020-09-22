@@ -333,11 +333,48 @@ __global__
 void execute_coalesced(
     const DTYPE *a,
     const DTYPE *b,
+    DTYPE *c,
+    DTYPE *d,
+    DTYPE *solution,
+    int n,
+    int num_chunks
+){
+
+  const unsigned int idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (idx >= num_chunks) {
+      return;
+  }
+  DTYPE b0 = b[idx];
+  c[idx] /= b0;
+  d[idx] /= b0;
+
+  DTYPE norm_factor;
+  #pragma unroll
+  for (int j = 1; j < n; ++j) {
+      unsigned int indj = idx+(j*num_chunks);
+      unsigned int j1 = indj - num_chunks;
+      DTYPE ai = a[indj];
+      norm_factor = 1.0 / (b[indj] - ai * c[j1]);
+      c[indj] = c[indj] * norm_factor;
+      d[indj] = (d[indj] - ai * d[j1]) * norm_factor;
+  }
+  int lastIndx = num_chunks*(n-1);
+  solution[idx + lastIndx] = d[idx + lastIndx];
+  #pragma unroll
+  for (int j=n-2; j >= 0; --j) {
+    const unsigned int indj = idx + num_chunks*j;
+      solution[indj] = d[indj] - c[indj] * solution[indj + num_chunks];
+  }
+}
+
+__global__
+void execute_coalesced_const(
+    const DTYPE *a,
+    const DTYPE *b,
     const DTYPE *c,
     const DTYPE *d,
     DTYPE *solution,
-    int num_chunks,
-    int total_size
+    int num_chunks
 ){
   const unsigned int n = TRIDIAG_INNER_DIM;
 
