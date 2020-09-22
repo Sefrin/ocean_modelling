@@ -2,8 +2,9 @@
 #define TRIDIAG_INNER_DIM 115
 // #define TOTAL_SIZE 6624000
 #define DTYPE double
-#define ERRCHK 0
-
+#define ERRCHK 1
+#define TILE_DIM 32
+#define BLOCK_ROWS 8
 #if ERRCHK
 #define SYNCPEEK gpuErrchk(cudaDeviceSynchronize()); gpuErrchk(cudaPeekAtLastError()); 
 #else

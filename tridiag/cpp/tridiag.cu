@@ -44,6 +44,32 @@ int timeval_substract(struct timeval* result, struct timeval* t2, struct timeval
   return (diff<0);
 }
 
+void transposeMats(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d,
+    DTYPE* a_t, DTYPE* b_t, DTYPE* c_t, DTYPE* d_t,
+     int xdim, int ydim, int total_size)
+{
+    int num_b_x = (xdim + TILE_DIM -1) / TILE_DIM;
+    int num_b_y = (ydim + TILE_DIM -1) / TILE_DIM;
+
+    dim3 dimGrid(num_b_x, num_b_y, 1);
+    dim3 dimBlock(TILE_DIM, BLOCK_ROWS, 1);
+    transpose4<<<dimGrid, dimBlock>>>(a, b, c, d, a_t, b_t, c_t, d_t, xdim, ydim, total_size);
+    SYNCPEEK
+
+}
+void transposeMat(DTYPE* m, DTYPE* m_t, int xdim, int ydim, int total_size)
+{
+    int num_b_x = (xdim + TILE_DIM -1) / TILE_DIM;
+    int num_b_y = (ydim + TILE_DIM -1) / TILE_DIM;
+
+    dim3 dimGrid(num_b_x, num_b_y, 1);
+    dim3 dimBlock(TILE_DIM, BLOCK_ROWS, 1);
+    transpose<<<dimGrid, dimBlock>>>(m, m_t, xdim, ydim, total_size);
+    SYNCPEEK
+
+}
+
+
 void tridiag_naive(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* out, unsigned int num_chunks, unsigned int n)
 {
     for (unsigned int chunk = 0 ; chunk < num_chunks ; chunk++)
@@ -80,8 +106,21 @@ inline void tridiag_parallel(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* out,
         execute_no_const<<<num_blocks, BLOCK_SIZE>>>(a, b, c, d, out, total_size, n);
         SYNCPEEK
     }
-    
+}
 
+inline void tridiag_parallel_coalesced(DTYPE* a_dev, DTYPE* b_dev, DTYPE* c_dev, DTYPE* d_dev,
+    DTYPE* a_dev_t, DTYPE* b_dev_t, DTYPE* c_dev_t, DTYPE* d_dev_t, DTYPE* solution, DTYPE* solution_t,
+     int n, int num_chunks, int total_size)
+{
+    // transposeMats(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, n, num_chunks, total_size);
+    transposeMat(a_dev, a_dev_t, n, num_chunks, total_size);
+    transposeMat(b_dev, b_dev_t, n, num_chunks, total_size);
+    transposeMat(c_dev, c_dev_t, n, num_chunks, total_size);
+    transposeMat(d_dev, d_dev_t, n, num_chunks, total_size);
+    unsigned int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
+    execute_coalesced<<<num_blocks_chunk, BLOCK_SIZE>>>(a_dev_t, b_dev_t, c_dev_t, d_dev_t, solution, num_chunks, total_size);
+    SYNCPEEK
+    transposeMat(solution, solution_t, num_chunks, n, total_size);
 }
 
 inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, unsigned int num_chunks, unsigned int n, unsigned int total_size, bool use_const = false)
@@ -143,13 +182,13 @@ inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple
 
 
 
-inline int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, int num_chunks, int n, int total_size)
+inline unsigned long int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, int num_chunks, int n, int total_size)
 {
     // recurrence 1
     int num_blocks = (total_size + BLOCK_SIZE-1) / BLOCK_SIZE;
     int num_blocks_chunk = (num_chunks + BLOCK_SIZE-1) / BLOCK_SIZE;
 
-    int mem_usage = 0;
+    unsigned long int mem_usage = 0;
     int dsize = sizeof(DTYPE);
     mem_usage += (3*dsize + 4*dsize) * total_size;
     // MEMUSAGE: R: 3*DTYPE * total_size  W: 4*DTYPE * total_size
@@ -190,7 +229,7 @@ inline int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>*
     thrust::equal_to<unsigned int> eq;
     thrust::device_ptr<tuple4<DTYPE>> tup_ptr(tups);
     // MEMUSAGE: R: (4*uint + 4*DTYPE) totalsize, W: 4*DTYPE
-    mem_usage += (4*sizeof(uint) + 4*dsize * 4*dsize) * total_size;
+    mem_usage += (sizeof(uint) + 4*dsize + 4*dsize) * total_size;
     thrust::inclusive_scan_by_key(keys_ptr, keys_ptr + total_size, tup_ptr, tup_ptr, eq, assOp1);
     SYNCPEEK
 
@@ -270,6 +309,8 @@ void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
         std::cout << "\nINVALID \n- Total abs error: " << totalerr << "\n - Max abs error: " << maxabs << "\n- Max rel error: " << maxrel << "\n" << std::endl;
 }
 
+
+
 int main(int argc, char** argv)
 {
     if (argc < 3)
@@ -290,7 +331,7 @@ int main(int argc, char** argv)
     DTYPE* out_parallel = new DTYPE[total_size];
     std::default_random_engine generator;
     generator.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    std::uniform_real_distribution<DTYPE> distribution(20.0,5.0);
+    std::uniform_real_distribution<DTYPE> distribution(0.0,1.0);
     for (unsigned int i = 0 ; i < total_size ; i++)
     {
         a[i] = distribution(generator);
@@ -309,6 +350,11 @@ int main(int argc, char** argv)
     DTYPE* c_dev;
     DTYPE* d_dev;
     DTYPE* out_dev;
+    DTYPE* a_dev_t;
+    DTYPE* b_dev_t;
+    DTYPE* c_dev_t;
+    DTYPE* d_dev_t;
+    DTYPE* out_dev_t;
     tuple4<DTYPE>* tups;
     tuple2<DTYPE>* tups2;
     unsigned int* keys;
@@ -325,17 +371,24 @@ int main(int argc, char** argv)
     gpuErrchk(cudaMalloc((void**)&c_dev, mem_size));
     gpuErrchk(cudaMalloc((void**)&d_dev, mem_size));
     gpuErrchk(cudaMalloc((void**)&out_dev, mem_size));
+    gpuErrchk(cudaMalloc((void**)&a_dev_t, mem_size));
+    gpuErrchk(cudaMalloc((void**)&b_dev_t, mem_size));
+    gpuErrchk(cudaMalloc((void**)&c_dev_t, mem_size));
+    gpuErrchk(cudaMalloc((void**)&d_dev_t, mem_size));
+    gpuErrchk(cudaMalloc((void**)&out_dev_t, mem_size));
     gpuErrchk(cudaMalloc((void**)&tups, total_size*sizeof(tuple4<DTYPE>)));
     gpuErrchk(cudaMalloc((void**)&tups2, total_size*sizeof(tuple2<DTYPE>)));
     gpuErrchk(cudaMalloc((void**)&keys, total_size*sizeof(unsigned int)));
     gpuErrchk(cudaMalloc((void**)&firstBuf, num_chunks*sizeof(DTYPE)));
-
+    
 
     // verify results for each method:
     gpuErrchk(cudaMemcpy(a_dev, a, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
+
+
     tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size);
     gpuErrchk(cudaMemcpy(out_parallel, out_dev, mem_size, cudaMemcpyDeviceToHost));
     std::cout << "Naive parallel version: ";
@@ -354,10 +407,20 @@ int main(int argc, char** argv)
     gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
-    int flat_mem = tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
+    tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size);
+    gpuErrchk(cudaMemcpy(out_parallel, out_dev_t, mem_size, cudaMemcpyDeviceToHost));
+    std::cout << "Naive parallel coalesced version with const N: ";
+    verify(out_naive, out_parallel, total_size);
+
+    gpuErrchk(cudaMemcpy(a_dev, a, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
+    unsigned long int flat_mem = tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
     gpuErrchk(cudaMemcpy(out_parallel, d_dev, mem_size, cudaMemcpyDeviceToHost));
     std::cout << "Flat version: ";
     verify(out_naive, out_parallel, total_size);
+     
 
     gpuErrchk(cudaMemcpy(a_dev, a, mem_size, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
@@ -382,11 +445,11 @@ int main(int argc, char** argv)
     unsigned long int elapsed;
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size), "Primitive parallel version", GPU_RUNS);
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size, true), "Primitive parallel version using const", GPU_RUNS);
+    BENCH(tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, num_chunks, n, total_size), "Primitive parallel coalesced version using const", GPU_RUNS);
     BENCH(tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version", GPU_RUNS);
     
     double elapsed_sec = (double) elapsed / 1000000.0;
     std::cout << "Bandwith: " << ((double)flat_mem / (1024*1024*1024))  / elapsed_sec << "GB/s" << std::endl;
-
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version with sequential first recurrence", GPU_RUNS);
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size, true), "Flat version with sequential first recurrence using const", GPU_RUNS);
         
@@ -395,6 +458,12 @@ int main(int argc, char** argv)
     gpuErrchk(cudaFree(b_dev));
     gpuErrchk(cudaFree(c_dev));
     gpuErrchk(cudaFree(d_dev));
+    gpuErrchk(cudaFree(out_dev));
+    gpuErrchk(cudaFree(a_dev_t));
+    gpuErrchk(cudaFree(b_dev_t));
+    gpuErrchk(cudaFree(c_dev_t));
+    gpuErrchk(cudaFree(d_dev_t));
+    gpuErrchk(cudaFree(out_dev_t));
     gpuErrchk(cudaFree(tups));
     gpuErrchk(cudaFree(tups2));
     gpuErrchk(cudaFree(keys));
