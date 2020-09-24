@@ -5,3 +5,6 @@ DONE:
 
 TODO:
 -- implement recurrent sequential thing (execute kernel) in futhark
+-- XLA get cuda buffers? 
+-- futhark cuda --library?
+-- figure out 80ms stuff
