@@ -4,7 +4,7 @@ DONE:
 -- clean up cuda code | OKish I guess
 
 TODO:
--- implement recurrent sequential thing (execute kernel) in futhark
 -- XLA get cuda buffers? 
 -- futhark cuda --library?
--- figure out 80ms stuff
+-- validate futhark solution
+-- version that uses shared memory: inner dim < 1024
