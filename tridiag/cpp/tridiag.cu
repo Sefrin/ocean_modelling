@@ -335,7 +335,7 @@ int main(int argc, char** argv)
     DTYPE* out_parallel = new DTYPE[total_size];
     std::default_random_engine generator;
     generator.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    std::uniform_real_distribution<DTYPE> distribution(0.0,1.0);
+    std::uniform_real_distribution<DTYPE> distribution(20.0,5.0);
     for (unsigned int i = 0 ; i < total_size ; i++)
     {
         a[i] = distribution(generator);
@@ -458,8 +458,8 @@ int main(int argc, char** argv)
     unsigned long int elapsed;
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size), "Primitive parallel version", GPU_RUNS);
     BENCH(tridiag_parallel(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n, total_size, true), "Primitive parallel version using const", GPU_RUNS);
-    BENCH(tridiag_parallel_coalesced_no_const(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, num_chunks, n, total_size), "Primitive parallel coalesced version", GPU_RUNS);
-    BENCH(tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, num_chunks, n, total_size), "Primitive parallel coalesced version using const", GPU_RUNS);
+    BENCH(tridiag_parallel_coalesced_no_const(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size), "Primitive parallel coalesced version", GPU_RUNS);
+    BENCH(tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size), "Primitive parallel coalesced version using const", GPU_RUNS);
     BENCH(tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version", GPU_RUNS);
     
     double elapsed_sec = (double) elapsed / 1000000.0;
