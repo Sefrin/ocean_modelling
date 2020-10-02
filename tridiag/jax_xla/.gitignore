@@ -1,0 +1,3 @@
+*.so
+bazel*
+__pycache__
