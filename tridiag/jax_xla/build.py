@@ -170,7 +170,7 @@ build:short_logs --output_filter=DONT_MATCH_ANYTHING
 
 
 def write_bazelrc(cuda_toolkit_path=None, cudnn_install_path=None, **kwargs):
-  with open("../.bazelrc", "w") as f:
+  with open(".bazelrc", "w") as f:
     f.write(BAZELRC_TEMPLATE.format(**kwargs))
     if cuda_toolkit_path:
       f.write("build --action_env CUDA_TOOLKIT_PATH=\"{cuda_toolkit_path}\"\n"
