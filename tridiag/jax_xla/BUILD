@@ -68,7 +68,7 @@ cc_library(
 py_library(
     name = "tridiag",
     srcs = [
-        "cuda_tridiag.py"
+        "tridiag.py"
     ],
     deps = [
         ":gpu_support"
@@ -85,7 +85,7 @@ py_library(
 cuda_library(
     name = "cuda_tridiag_kernels_lib",
     srcs = ["cuda_tridiag_kernels.cu.cc"],
-    hdrs = ["cuda_tridiag_kernels.h", "cuda_transpose.h"],
+    hdrs = ["cuda_tridiag_kernels.h"],
     deps = [
         ":gpu_kernel_helpers",
         ":kernel_helpers",

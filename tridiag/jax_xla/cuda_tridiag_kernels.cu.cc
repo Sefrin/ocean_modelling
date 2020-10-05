@@ -19,7 +19,6 @@ limitations under the License.
 #include "cuda_tridiag_kernels.h"
 #include "gpu_kernel_helpers.h"
 #include "kernel_helpers.h"
-#include "cuda_transpose.h"
 
 namespace jax {
 namespace {
@@ -35,8 +34,8 @@ void TridiagKernel(
     int n,
     int num_chunks
 ){
-  const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if ( idx < num_chunks ) {
+  for (std::int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < num_chunks;
+       idx += blockDim.x * gridDim.x) {
     DTYPE b0 = b[idx];
     c[idx] /= b0;
     d[idx] /= b0;
@@ -87,28 +86,16 @@ void CudaTridiag(cudaStream_t stream, void** buffers, const char* opaque,
       *UnpackDescriptor<TridiagDescriptor>(opaque, opaque_len);
   const int num_systems = descriptor.num_systems;
   const int system_depth = descriptor.system_depth;
-  // const int total_size = descriptor.total_size;
-
-
+ 
   const DTYPE* a = reinterpret_cast<const DTYPE*>(buffers[0]);
   const DTYPE* b = reinterpret_cast<const DTYPE*>(buffers[1]);
   DTYPE* c = reinterpret_cast<DTYPE*>(buffers[2]); // should be const
   DTYPE* d = reinterpret_cast<DTYPE*>(buffers[3]); // should be const
   DTYPE* out = reinterpret_cast<DTYPE*>(buffers[4]); // output
-  // DTYPE* a_t = out + total_size; // a transpose
-  // DTYPE* b_t = a_t + total_size; // b transpose
-  // DTYPE* c_t = b_t + total_size; // c transpose
-  // DTYPE* d_t = c_t + total_size; // d transpose
-  // DTYPE* out_t = d_t + total_size; // out transpose
-  
-
-
-  const int BLOCK_SIZE = 256;
-  // transposeMats(a, b, c, d, a_t, b_t, c_t, d_t, system_depth, num_systems, total_size);
+  const int BLOCK_SIZE = 128;
   const std::int64_t grid_dim =
       std::min<std::int64_t>(1024, (num_systems + BLOCK_SIZE - 1) / BLOCK_SIZE);
   TridiagKernel<DTYPE><<<grid_dim, BLOCK_SIZE, 0, stream>>>(a, b, c, d, out, system_depth, num_systems);
-  // transposeMat(out_t, out, num_systems, system_depth, total_size);
   ThrowIfError(cudaGetLastError());
 }
 

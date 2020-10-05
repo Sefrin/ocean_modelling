@@ -230,11 +230,11 @@ def main():
       help_str="Should we build with MKL-DNN enabled?")
   parser.add_argument(
       "--cuda_path",
-      default=None,
+      default="/usr/local/cuda",
       help="Path to the CUDA toolkit.")
   parser.add_argument(
       "--cudnn_path",
-      default=None,
+      default="/usr/local/cuda",
       help="Path to CUDNN libraries.")
   parser.add_argument(
       "--cuda_compute_capabilities",
@@ -250,8 +250,8 @@ def main():
       help="Additional options to pass to bazel.")
   args = parser.parse_args()
 
-
-  os.chdir(os.path.dirname(__file__ or args.prog) or '.')
+  
+  # os.chdir(os.path.dirname(__file__ or args.prog) or '.')
 
   # Find a working Bazel.
   bazel_path = get_bazel_path(args.bazel_path)
@@ -292,11 +292,11 @@ def main():
   config_args += ["--config=cuda"]
   config_args += ["--define=xla_python_enable_gpu=true"]
   command = ([bazel_path] + args.bazel_startup_options +
-    ["build", "tridiag", "--verbose_failures=true"])
+    ["build", "tridiag", "--verbose_failures=true"] + config_args)
   print(" ".join(command))
   shell(command)
-  shutil.copy("bazel-bin/cuda_tridiag_kernels.so", ".")
-#   shell([bazel_path, "shutdown"])
+  shutil.copyfile("bazel-bin/cuda_tridiag_kernels.so", "cuda_tridiag_kernels.so")
+  shell([bazel_path, "clean"])
 
 
 if __name__ == "__main__":
