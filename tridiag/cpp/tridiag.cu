@@ -6,13 +6,15 @@
 #include <stdio.h>
 #include <random>
 #include <time.h> 
+#include <fstream>
 // CUDA / THRUST
 #include <cuda_runtime.h>
 #include <thrust/scan.h>
 #include <thrust/device_ptr.h>
 // Project internal
 #include "tridiag_kernels.cu"
-#include "include/data_structures.hpp"
+#include "include/device_utils.cu.h"
+
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -214,6 +216,20 @@ inline void tridiag_thrust_seqRec1(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple
 }
 
 
+inline void tridiag_shared(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* out, int num_chunks, int n)
+{
+    if (n > 1024)
+    {
+        return;
+    }
+    // round blocksize to next multiple of 32 bigger than n
+    const int blocksize = ((n + 31) / 32) * 32;
+    int num_blocks = num_chunks;
+    size_t shared_mem_cnt = 4*blocksize*sizeof(DTYPE);
+    tridiag_shared<<<num_blocks, blocksize, shared_mem_cnt>>>(a,b,c,d,out,n);
+    SYNCPEEK
+}
+
 
 inline unsigned long int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, tuple4<DTYPE>* tups, tuple2<DTYPE>* tups2, unsigned int* keys, DTYPE* firstBuf, int num_chunks, int n, int total_size)
 {
@@ -311,7 +327,40 @@ inline unsigned long int tridiag_thrust(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, 
     return mem_usage;
 }
 
+void save_dataset(const DTYPE* a, const DTYPE* b, const DTYPE* c, const DTYPE* d, int num_chunks, int n)
+{
+    std::cout << "writing dataset" << std::endl;
+    std::ofstream dataset("../dataset.test", std::ios::out | std::ios::binary);
 
+    const char* f32 = " f32";
+    const char* f64 = " f64";
+    std::uint64_t num_chunks_64 = num_chunks;
+    std::uint64_t n64 = n;
+    dataset << "b" << (char)2 << (char)2;
+    if (sizeof(DTYPE) == sizeof(double))
+    {
+        dataset << f64;
+    }
+    else if (sizeof(DTYPE) == sizeof(float))
+    {
+        dataset << f32;
+    }
+    else
+    {
+        return;
+    }
+    std::cout << "writing dimensions" << std::endl;
+    dataset.write((char*) &num_chunks_64, 8);
+    dataset.write((char*) &n64, 8);
+    for (int i = 0 ; i < num_chunks ; i++)
+    {
+        for (int j = 0; j<n; j++)
+        {
+            dataset.write((char*) (a + (i*n + j)), sizeof(DTYPE));
+        }
+    }
+    dataset.close();
+}
 
 
 
@@ -334,18 +383,19 @@ int main(int argc, char** argv)
     DTYPE* out_naive = new DTYPE[total_size];
     DTYPE* out_parallel = new DTYPE[total_size];
     std::default_random_engine generator;
-    generator.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    std::uniform_real_distribution<DTYPE> distribution(20.0,5.0);
+    generator.seed(12);//std::chrono::system_clock::now().time_since_epoch().count());
+    std::uniform_real_distribution<DTYPE> dominant(0.5,1.5);
+    std::uniform_real_distribution<DTYPE> nondominant(0.005,0.015);
     for (unsigned int i = 0 ; i < total_size ; i++)
     {
-        a[i] = distribution(generator);
-        b[i] = distribution(generator);
-        c[i] = distribution(generator);
-        d[i] = distribution(generator);
+        a[i] = nondominant(generator);
+        b[i] = dominant(generator); // distribution(generator);
+        c[i] = nondominant(generator);// distribution(generator);
+        d[i] = dominant(generator); // distribution(generator);
         b_seq[i] = b[i];
         d_seq[i] = d[i];
     }
-    
+    // save_dataset(a,b,c,d,num_chunks,n);
     // compute reference solution on cpu
     tridiag_naive(a, b_seq, c, d_seq, out_naive, num_chunks, n);
     
@@ -431,7 +481,7 @@ int main(int argc, char** argv)
     gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
     unsigned long int flat_mem = tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size);
     gpuErrchk(cudaMemcpy(out_parallel, d_dev, mem_size, cudaMemcpyDeviceToHost));
-    std::cout << "Flat version: ";
+    std::cout << "Flat version: " << std::endl;
     verify(out_naive, out_parallel, total_size);
      
 
@@ -453,6 +503,17 @@ int main(int argc, char** argv)
     std::cout << "Flat version with sequential first recurrence using const N: ";
     verify(out_naive, out_parallel, total_size);
 
+    gpuErrchk(cudaMemcpy(a_dev, a, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(b_dev, b, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(c_dev, c, mem_size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(d_dev, d, mem_size, cudaMemcpyHostToDevice));
+    tridiag_shared(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n);
+    gpuErrchk(cudaMemcpy(out_parallel, out_dev, mem_size, cudaMemcpyDeviceToHost));
+    std::cout << "Flat version using shared mem: ";
+    verify(out_naive, out_parallel, total_size);
+
+
+
 
     const int GPU_RUNS = 20;
     unsigned long int elapsed;
@@ -462,11 +523,12 @@ int main(int argc, char** argv)
     BENCH(tridiag_parallel_coalesced(a_dev, b_dev, c_dev, d_dev, a_dev_t, b_dev_t, c_dev_t, d_dev_t, out_dev, out_dev_t, n, num_chunks, total_size), "Primitive parallel coalesced version using const", GPU_RUNS);
     BENCH(tridiag_thrust(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version", GPU_RUNS);
     
+
     double elapsed_sec = (double) elapsed / 1000000.0;
     std::cout << "Bandwith: " << ((double)flat_mem / (1024*1024*1024))  / elapsed_sec << "GB/s" << std::endl;
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size), "Flat version with sequential first recurrence", GPU_RUNS);
     BENCH(tridiag_thrust_seqRec1(a_dev, b_dev, c_dev, d_dev, tups, tups2, keys, firstBuf, num_chunks, n, total_size, true), "Flat version with sequential first recurrence using const", GPU_RUNS);
-        
+    BENCH(tridiag_shared(a_dev, b_dev, c_dev, d_dev, out_dev, num_chunks, n), "Flat version using shared mem", GPU_RUNS);
 
     gpuErrchk(cudaFree(a_dev));
     gpuErrchk(cudaFree(b_dev));
