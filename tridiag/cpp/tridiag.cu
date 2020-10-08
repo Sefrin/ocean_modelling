@@ -61,7 +61,7 @@ void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
                 maxrel = rel;
         if (abs > maxabs)
                 maxabs = abs;
-        if (abs >= 0.01)
+        if (abs >= 0.00000001)
         {
             valid = false;
         }

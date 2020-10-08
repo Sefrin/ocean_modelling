@@ -45,7 +45,7 @@ __device__ inline void filltup2_2(DTYPE* b, DTYPE* c, DTYPE* d, unsigned int dat
 {
   int newIdx = n - threadIdx.x - 1;
   pbbtuple2<DTYPE> tup;
-  if (newIdx <= 0)
+  if (threadIdx.x == 0 || threadIdx.x >= n)
   {
     tup.a = 0;
     tup.b = 1;
@@ -56,7 +56,6 @@ __device__ inline void filltup2_2(DTYPE* b, DTYPE* c, DTYPE* d, unsigned int dat
     tup.a = d[newIdx]/b_tmp;
     tup.b = -c[datastart + newIdx]/b_tmp;
   }
-  __syncthreads();
   shared[threadIdx.x] = tup;
 }
 
@@ -65,7 +64,7 @@ __global__ void tridiag_shared(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* ou
 
   extern __shared__ DTYPE shared[];
   DTYPE* b_tmp = shared;
-  DTYPE* d_tmp = shared+blockDim.x;
+  DTYPE* d_tmp = shared+2*blockDim.x;
   volatile typename tuple4op<DTYPE>::RedElTp* tuple4ptr = reinterpret_cast<typename tuple4op<DTYPE>::RedElTp*>(shared);
   volatile typename tuple2op<DTYPE>::RedElTp* tuple2ptr = reinterpret_cast<typename tuple2op<DTYPE>::RedElTp*>(d_tmp);
 
