@@ -3,8 +3,8 @@ DONE:
 -- M constant in futhark and M variable in cuda | OK
 -- clean up cuda code | OKish I guess
 
-TODO:
--- XLA get cuda buffers? 
--- futhark cuda --library?
--- validate futhark solution
--- version that uses shared memory: inner dim < 1024
+TODO: 
+-- create validation dataset
+-- fix: version that uses shared memory: inner dim < 1024
+-- integrate cython
+-- write report for this part, maybe some speedup results

@@ -91,11 +91,12 @@ __global__ void tridiag_shared(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* ou
   if (threadIdx.x < n)
     d_tmp[threadIdx.x] = tup2.a + tup2.b*d0;
   __syncthreads();
-
+  DTYPE d_div_b = d_tmp[n-1] / b_tmp[n-1];
+  __syncthreads();
   filltup2_2(b_tmp, c, d_tmp, datastart, tuple2ptr, n);
   __syncthreads();
   tup2 = scanIncBlock<tuple2op<DTYPE>>(tuple2ptr, threadIdx.x);
-  DTYPE d_div_b = d_tmp[n-1] / b_tmp[n-1];
+  
   __syncthreads();
   if (threadIdx.x < n)
     out[datastart + n - threadIdx.x - 1] = tup2.a + tup2.b * d_div_b;
