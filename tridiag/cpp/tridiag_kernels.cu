@@ -5,7 +5,7 @@
 #include "include/constants.hpp"
 #include "include/pbbKernels.cu.h"
 
-__device__ inline void filltup4(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int index, volatile typename tuple4op<DTYPE>::RedElTp* shared, unsigned int n)
+__device__ inline void filltup4(DTYPE ai, DTYPE bi, DTYPE cim1, unsigned int index, volatile typename tuple4op<DTYPE>::RedElTp* shared, unsigned int n)
 {
   pbbtuple4<DTYPE> tup;
   if (threadIdx.x == 0 || threadIdx.x >= n)
@@ -17,15 +17,15 @@ __device__ inline void filltup4(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int index
   }
   else
   {
-    tup.a = b[index];
-    tup.b = -a[index]*c[index-1];
+    tup.a = bi;
+    tup.b = -ai*cim1;
     tup.c = 1;
     tup.d = 0;
   }
   shared[threadIdx.x] = tup;
 }
 
-__device__ inline void filltup2_1(DTYPE* a, DTYPE* b, DTYPE* d, unsigned int index, volatile typename tuple2op<DTYPE>::RedElTp* shared, unsigned int n)
+__device__ inline void filltup2_1(DTYPE ai, DTYPE* b_tmp, DTYPE di, unsigned int index, volatile typename tuple2op<DTYPE>::RedElTp* shared, unsigned int n)
 {
   pbbtuple2<DTYPE> tup;
   if (threadIdx.x == 0 || threadIdx.x >= n)
@@ -35,13 +35,13 @@ __device__ inline void filltup2_1(DTYPE* a, DTYPE* b, DTYPE* d, unsigned int ind
   }
   else
   {
-    tup.a = d[index];
-    tup.b = -a[index]/b[threadIdx.x-1];
+    tup.a = di;
+    tup.b = -ai/b_tmp[threadIdx.x-1];
   }
   shared[threadIdx.x] = tup;
 }
 
-__device__ inline void filltup2_2(DTYPE* b, DTYPE* c, DTYPE* d, unsigned int datastart, volatile typename tuple2op<DTYPE>::RedElTp* shared, unsigned int n)
+__device__ inline void filltup2_2(DTYPE* b_shared, DTYPE* c_shared, DTYPE* d_shared, unsigned int datastart, volatile typename tuple2op<DTYPE>::RedElTp* shared, unsigned int n)
 {
   int newIdx = n - threadIdx.x - 1;
   pbbtuple2<DTYPE> tup;
@@ -52,10 +52,11 @@ __device__ inline void filltup2_2(DTYPE* b, DTYPE* c, DTYPE* d, unsigned int dat
   }
   else
   {
-    DTYPE b_tmp = b[newIdx];
-    tup.a = d[newIdx]/b_tmp;
-    tup.b = -c[datastart + newIdx]/b_tmp;
+    DTYPE b_tmp = b_shared[newIdx];
+    tup.a = d_shared[newIdx]/b_tmp;
+    tup.b = -c_shared[newIdx]/b_tmp; // c[datastart + newIdx]
   }
+  __syncthreads();
   shared[threadIdx.x] = tup;
 }
 
@@ -63,36 +64,65 @@ __global__ void tridiag_shared(DTYPE* a, DTYPE* b, DTYPE* c, DTYPE* d, DTYPE* ou
 {
 
   extern __shared__ DTYPE shared[];
-  DTYPE* b_tmp = shared;
-  DTYPE* d_tmp = shared+2*blockDim.x;
+  DTYPE* b_shared = shared;
+  DTYPE* d_shared = shared+blockDim.x;
+  DTYPE* empty_space = shared+2*blockDim.x;
   volatile typename tuple4op<DTYPE>::RedElTp* tuple4ptr = reinterpret_cast<typename tuple4op<DTYPE>::RedElTp*>(shared);
-  volatile typename tuple2op<DTYPE>::RedElTp* tuple2ptr = reinterpret_cast<typename tuple2op<DTYPE>::RedElTp*>(d_tmp);
+  volatile typename tuple2op<DTYPE>::RedElTp* tuple2ptr = reinterpret_cast<typename tuple2op<DTYPE>::RedElTp*>(empty_space);
 
   const unsigned int datastart = blockIdx.x * n; 
   const unsigned int index = datastart + threadIdx.x; 
   
+  DTYPE ai;
+  DTYPE bi;
+  DTYPE cim1;
+  DTYPE di;
+  if (threadIdx.x < n)
+  {
+    ai = a[index];
+    bi = b[index];
+    di = d[index];
+    if (threadIdx.x == 0)
+    {
+      cim1 = c[datastart+n-1];
+    }
+    else
+    {
+      cim1 = c[index-1];
+    }
+  }
+  
   // if (threadIdx.x < n)
-  filltup4(a, b, c, index, tuple4ptr, n);
+  filltup4(ai, bi, cim1, index, tuple4ptr, n);
   __syncthreads();
 
   typename tuple4op<DTYPE>::RedElTp tup4 = scanIncBlock<tuple4op<DTYPE>>(tuple4ptr, threadIdx.x);
   DTYPE b0 = b[datastart];
   __syncthreads();
   if (threadIdx.x < n)
-    b_tmp[threadIdx.x] = (tup4.a*b0+tup4.b) / (tup4.c*b0 + tup4.d);
+    b_shared[threadIdx.x] = (tup4.a*b0+tup4.b) / (tup4.c*b0 + tup4.d);
   __syncthreads();
   // if (threadIdx.x < n)
-  filltup2_1(a, b_tmp, d, index, tuple2ptr, n);
+  filltup2_1(ai, b_shared, di, index, tuple2ptr, n);
   __syncthreads();
   typename tuple2op<DTYPE>::RedElTp tup2 = scanIncBlock<tuple2op<DTYPE>>(tuple2ptr, threadIdx.x);
   DTYPE d0 = d[datastart];
   __syncthreads();
   if (threadIdx.x < n)
-    d_tmp[threadIdx.x] = tup2.a + tup2.b*d0;
+    d_shared[threadIdx.x] = tup2.a + tup2.b*d0;
   __syncthreads();
-  DTYPE d_div_b = d_tmp[n-1] / b_tmp[n-1];
+  DTYPE d_div_b = d_shared[n-1] / b_shared[n-1];
   __syncthreads();
-  filltup2_2(b_tmp, c, d_tmp, datastart, tuple2ptr, n);
+  if (threadIdx.x == 0)
+  {
+    empty_space[n-1] = cim1;
+  }
+  else if (threadIdx.x < n)
+  {
+    empty_space[threadIdx.x-1] = cim1;
+  }
+  __syncthreads();
+  filltup2_2(b_shared, empty_space, d_shared, datastart, tuple2ptr, n);
   __syncthreads();
   tup2 = scanIncBlock<tuple2op<DTYPE>>(tuple2ptr, threadIdx.x);
   
@@ -129,7 +159,7 @@ __global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int num_chunk
     DTYPE bs[TRIDIAG_INNER_DIM];
     DTYPE cs[TRIDIAG_INNER_DIM-1];
     
-    #pragma unroll
+    // #pragma unroll
     for (int i = 0 ; i < TRIDIAG_INNER_DIM ; i++)
     {
         int loc = chunk_start + i;
@@ -137,12 +167,12 @@ __global__ void recurrence1(DTYPE* a, DTYPE* b, DTYPE* c, unsigned int num_chunk
         bs[i] = b[loc];  
         cs[i] = c[loc];
     }
-    #pragma unroll
+    // #pragma unroll
     for (int i = 0 ; i < TRIDIAG_INNER_DIM -1  ; i++)
     {
         bs[i+1] -= as[i]*cs[i]/bs[i];
     }
-    #pragma unroll
+    // #pragma unroll
     for (int i = 0 ; i < TRIDIAG_INNER_DIM ; i++)
     {
         b[chunk_start + i] = bs[i];
@@ -285,7 +315,7 @@ void execute_no_const(
     c[idx] /= b[idx];
     d[idx] /= b[idx];
     DTYPE norm_factor;
-    #pragma unroll
+    // #pragma unroll
     for (ptrdiff_t j = 1; j < n; ++j) {
         norm_factor = 1.0 / (b[idx+j] - a[idx+j] * c[idx + j-1]);
         c[idx + j] = c[idx+j] * norm_factor;
@@ -293,7 +323,7 @@ void execute_no_const(
     }
 
     solution[idx + n-1] = d[idx + n-1];
-    #pragma unroll
+    // #pragma unroll
     for (ptrdiff_t j=n-2; j >= 0; --j) {
         solution[idx + j] = d[idx + j] - c[idx + j] * solution[idx + j+1];
     }
@@ -320,7 +350,7 @@ void execute(
     cp[0] = c[idx] / b[idx];
     dp[0] = d[idx] / b[idx];
     DTYPE norm_factor;
-    #pragma unroll
+    // #pragma unroll
     for (ptrdiff_t j = 1; j < TRIDIAG_INNER_DIM; ++j) {
         norm_factor = 1.0 / (b[idx+j] - a[idx+j] * cp[j-1]);
         cp[j] = c[idx+j] * norm_factor;
@@ -328,7 +358,7 @@ void execute(
     }
 
     solution[idx + TRIDIAG_INNER_DIM-1] = dp[TRIDIAG_INNER_DIM-1];
-    #pragma unroll
+    // #pragma unroll
     for (ptrdiff_t j=TRIDIAG_INNER_DIM-2; j >= 0; --j) {
         solution[idx + j] = dp[j] - cp[j] * solution[idx + j+1];
     }
@@ -428,6 +458,51 @@ void transpose(
 }
 
 __global__
+void execute_coalesced_shared(
+    const DTYPE *a,
+    const DTYPE *b,
+    const DTYPE *c,
+    const DTYPE *d,
+    DTYPE *solution,
+    int n,
+    int num_chunks
+){
+
+  extern __shared__ DTYPE shared[];
+  const unsigned int idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (idx >= num_chunks) {
+      return;
+  }
+  DTYPE b0 = b[idx];
+  c[idx] /= b0;
+  d[idx] /= b0;
+
+  DTYPE norm_factor;
+  unsigned int indj = idx;
+  DTYPE ai;
+  DTYPE cm1;
+  DTYPE dm1;
+
+  for (int j = 0; j < n-1; ++j) {
+      // c and d from last iteration
+      cm1 = c[indj];
+      dm1 = d[indj];
+      // jump to next chunk
+      indj += num_chunks;
+      ai = a[indj];
+      norm_factor = 1.0f / (b[indj] - ai * cm1);
+      c[indj] = c[indj] * norm_factor;
+      d[indj] = (d[indj] - ai * dm1) * norm_factor;
+  }
+  int lastIndx = idx + num_chunks*(n-1);
+  solution[lastIndx] = d[lastIndx];
+  for (int j=0; j < n-1; ++j) {
+      lastIndx -= num_chunks;
+      solution[lastIndx] = d[lastIndx] - c[lastIndx] * solution[lastIndx + num_chunks];
+  }
+}
+
+__global__
 void execute_coalesced(
     const DTYPE *a,
     const DTYPE *b,
@@ -493,7 +568,7 @@ void execute_coalesced_const(
   cp[0] = c[idx] / b[idx];
   dp[0] = d[idx] / b[idx];
 
-  #pragma unroll
+  // #pragma unroll
   for (int j = 1; j < n; ++j) {
       unsigned int indj = idx+(j*num_chunks);
       const DTYPE norm_factor = (b[indj] - a[indj] * cp[j-1]);
@@ -502,7 +577,7 @@ void execute_coalesced_const(
   }
 
   solution[idx + num_chunks*(n-1)] = dp[n-1];
-  #pragma unroll
+  // #pragma unroll
   for (int j=n-2; j >= 0; --j) {
       solution[idx + num_chunks*j] = dp[j] - cp[j] * solution[idx + num_chunks*(j+1)];
   }

@@ -61,7 +61,7 @@ void verify(DTYPE* out_naive, DTYPE* out_parallel, unsigned int total_size)
                 maxrel = rel;
         if (abs > maxabs)
                 maxabs = abs;
-        if (abs >= 0.00000001)
+        if (rel >= 0.000001)
         {
             valid = false;
         }
@@ -384,7 +384,7 @@ int main(int argc, char** argv)
     DTYPE* out_parallel = new DTYPE[total_size];
     std::default_random_engine generator;
     generator.seed(12);//std::chrono::system_clock::now().time_since_epoch().count());
-    std::uniform_real_distribution<DTYPE> dominant(0.5,1.5);
+    std::uniform_real_distribution<DTYPE> dominant(5,15);
     std::uniform_real_distribution<DTYPE> nondominant(0.005,0.015);
     for (unsigned int i = 0 ; i < total_size ; i++)
     {

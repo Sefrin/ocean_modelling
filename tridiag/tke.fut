@@ -1,4 +1,4 @@
-type DTYPE = f32
+type DTYPE = f64
 let INNER_DIM : i32 = 115
 
 let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DTYPE =
@@ -68,14 +68,14 @@ let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DT
 -- ==
 -- entry: tridagNested
 --
--- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+-- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
 entry tridagNested [n][m] (a: [n][m]DTYPE) (b: [n][m]DTYPE) (c: [n][m]DTYPE) (y: [n][m]DTYPE): *[n][m]DTYPE =
    map4 (\a b c y -> tridagPar (a,b,c,y)) a b c y
 
 -- ==
 -- entry: tridagNestedConst
 --
--- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+-- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
 entry tridagNestedConst [n] (a: [n][INNER_DIM]DTYPE) (b: [n][INNER_DIM]DTYPE) (c: [n][INNER_DIM]DTYPE) (y: [n][INNER_DIM]DTYPE): *[n][INNER_DIM]DTYPE =
    map4 (\a b c y -> tridagPar (a,b,c,y)) a b c y
 
@@ -100,7 +100,7 @@ let tridagSeq [m] (a:  [m]DTYPE, b: [m]DTYPE, c: [m]DTYPE, y: [m]DTYPE ): *[m]DT
 -- ==
 -- entry: tridagNestedSeqConst
 --
--- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+-- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
 entry tridagNestedSeqConst [n] (a: [n][INNER_DIM]DTYPE) (b: [n][INNER_DIM]DTYPE) (c: [n][INNER_DIM]DTYPE) (y: [n][INNER_DIM]DTYPE): *[n][INNER_DIM]DTYPE =
    #[sequential_inner]
    map4 (\a b c y -> tridagSeq (a,b,c,y)) a b c y
@@ -108,7 +108,7 @@ entry tridagNestedSeqConst [n] (a: [n][INNER_DIM]DTYPE) (b: [n][INNER_DIM]DTYPE)
 -- ==
 -- entry: tridagNestedSeq
 --
--- compiled random input { [57600][115]f32 [57600][115]f32 [57600][115]f32 [57600][115]f32 }
+-- compiled random input { [57600][115]f64 [57600][115]f64 [57600][115]f64 [57600][115]f64 }
 entry tridagNestedSeq [n][m] (a: [n][m]DTYPE) (b: [n][m]DTYPE) (c: [n][m]DTYPE) (y: [n][m]DTYPE): *[n][m]DTYPE =
    #[sequential_inner]
    map4 (\a b c y -> tridagSeq (a,b,c,y)) a b c y
