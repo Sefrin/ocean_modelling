@@ -8,10 +8,10 @@ from jax import abstract_arrays
 from jax.core import Primitive
 from jax.lib import xla_client
 from jax.interpreters import xla
+import tridiag_cuda
 
 try:
-    from . import cuda_tridiag_kernels
-    for _name, _value in cuda_tridiag_kernels.registrations().items():
+    for _name, _value in tridiag_cuda.gpu_custom_call_targets.items():
         xla_client.register_custom_call_target(_name, _value, platform="gpu")
 except ImportError:
   print("could not import cuda_tridiag_kernels. Are .so files present?")
@@ -52,7 +52,7 @@ def _tridiag(builder, a, b, c, d):
     else:
         raise RuntimeError('got unrecognized dtype')
 
-    opaque = cuda_tridiag_kernels.cuda_tridiag_descriptor(total_size, num_systems, system_depth)
+    opaque = tridiag_cuda.build_tridiag_descriptor(total_size, num_systems, system_depth)
     
     shape = xla_client.Shape.array_shape(dtype, dims, (1,0,2)) # transpose here for coalesced access!
     return xla_client.ops.CustomCallWithLayout(

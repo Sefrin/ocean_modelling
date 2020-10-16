@@ -1,4 +1,4 @@
-*.so
-bazel*
-__pycache__
-.bazelrc
+build
+dist
+*.egg-info
+*.cpp

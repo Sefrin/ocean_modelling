@@ -458,51 +458,6 @@ void transpose(
 }
 
 __global__
-void execute_coalesced_shared(
-    const DTYPE *a,
-    const DTYPE *b,
-    const DTYPE *c,
-    const DTYPE *d,
-    DTYPE *solution,
-    int n,
-    int num_chunks
-){
-
-  extern __shared__ DTYPE shared[];
-  const unsigned int idx = blockDim.x * blockIdx.x + threadIdx.x;
-  if (idx >= num_chunks) {
-      return;
-  }
-  DTYPE b0 = b[idx];
-  c[idx] /= b0;
-  d[idx] /= b0;
-
-  DTYPE norm_factor;
-  unsigned int indj = idx;
-  DTYPE ai;
-  DTYPE cm1;
-  DTYPE dm1;
-
-  for (int j = 0; j < n-1; ++j) {
-      // c and d from last iteration
-      cm1 = c[indj];
-      dm1 = d[indj];
-      // jump to next chunk
-      indj += num_chunks;
-      ai = a[indj];
-      norm_factor = 1.0f / (b[indj] - ai * cm1);
-      c[indj] = c[indj] * norm_factor;
-      d[indj] = (d[indj] - ai * dm1) * norm_factor;
-  }
-  int lastIndx = idx + num_chunks*(n-1);
-  solution[lastIndx] = d[lastIndx];
-  for (int j=0; j < n-1; ++j) {
-      lastIndx -= num_chunks;
-      solution[lastIndx] = d[lastIndx] - c[lastIndx] * solution[lastIndx + num_chunks];
-  }
-}
-
-__global__
 void execute_coalesced(
     const DTYPE *a,
     const DTYPE *b,
