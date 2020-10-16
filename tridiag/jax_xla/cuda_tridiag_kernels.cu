@@ -1,27 +1,17 @@
-/* Copyright 2019 Google LLC
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-
 #include <array>
 #include <cstddef>
-
+#include <bit>
 #include "cuda_tridiag_kernels.h"
-#include "gpu_kernel_helpers.h"
-#include "kernel_helpers.h"
 
-namespace jax {
-namespace {
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 template <typename DTYPE>
 __global__
@@ -66,16 +56,19 @@ void TridiagKernel(
   }
 }
 
-}  // namespace
-
 struct TridiagDescriptor {
   std::int64_t total_size;
   std::int64_t num_systems;
   std::int64_t system_depth;
 };
 
-std::string BuildCudaTridiagDescriptor(std::int64_t total_size, std::int64_t num_systems, std::int64_t system_depth) {
-  return PackDescriptorAsString(TridiagDescriptor{total_size, num_systems, system_depth});
+// Unpacks a descriptor object from a byte string.
+template <typename T>
+const T* UnpackDescriptor(const char* opaque, std::size_t opaque_len) {
+  if (opaque_len != sizeof(T)) {
+    throw std::runtime_error("Descriptor was not encoded correctly.");
+  }
+  return reinterpret_cast<const T*>(opaque);
 }
 
 template <typename DTYPE>
@@ -96,7 +89,7 @@ void CudaTridiag(cudaStream_t stream, void** buffers, const char* opaque,
   const std::int64_t grid_dim =
       std::min<std::int64_t>(1024, (num_systems + BLOCK_SIZE - 1) / BLOCK_SIZE);
   TridiagKernel<DTYPE><<<grid_dim, BLOCK_SIZE, 0, stream>>>(a, b, c, d, out, system_depth, num_systems);
-  ThrowIfError(cudaGetLastError());
+  gpuErrchk(cudaPeekAtLastError());
 }
 
 void CudaTridiagFloat(cudaStream_t stream, void** buffers, const char* opaque,
@@ -108,5 +101,3 @@ void CudaTridiagDouble(cudaStream_t stream, void** buffers, const char* opaque,
   CudaTridiag<double>(stream, buffers, opaque, opaque_len);
 }
 
-
-}  // namespace jax
