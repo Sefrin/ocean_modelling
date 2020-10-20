@@ -53,8 +53,9 @@ def _tridiag(builder, a, b, c, d):
         raise RuntimeError('got unrecognized dtype')
 
     opaque = tridiag_cuda.build_tridiag_descriptor(total_size, num_systems, system_depth)
-    
-    shape = xla_client.Shape.array_shape(dtype, dims, (1,0,2)) # transpose here for coalesced access!
+    num_dims = len(dims)
+    shape_tup = tuple(range(num_dims-2, -1, -1)) + (num_dims-1,)
+    shape = xla_client.Shape.array_shape(dtype, dims, shape_tup) # transpose here for coalesced access!
     return xla_client.ops.CustomCallWithLayout(
         builder, kernel,
         operands=(a, b, c, d),
