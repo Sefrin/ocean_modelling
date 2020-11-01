@@ -2,8 +2,8 @@ DONE:
 -- implement generic float/double | OK
 -- M constant in futhark and M variable in cuda | OK
 -- clean up cuda code | OKish I guess
--- create validation dataset (in python!)
+-- create validation dataset | (in python!)
+-- integrate cython | beaut
 
 TODO: 
--- integrate cython
 -- write report for this part, maybe some speedup results
