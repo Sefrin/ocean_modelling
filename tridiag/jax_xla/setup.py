@@ -109,8 +109,29 @@ except AttributeError:
     numpy_include = numpy.get_numpy_include()
 
 
-ext = Extension('tridiag_cuda',
-        sources = ['cuda_tridiag_kernels.cu', 'tridiag_cuda.pyx'],
+tridiag_ext = Extension('tridiag_cuda',
+        sources = ['cuda_tridiag_kernels.cu', 'tridiag_wrapper.pyx'],
+        library_dirs = [CUDA['lib64']],
+        libraries = ['cudart'],
+        language = 'c++',
+        runtime_library_dirs = [CUDA['lib64']],
+        # This syntax is specific to this build system
+        # we're only going to use certain compiler args with nvcc
+        # and not with gcc the implementation of this trick is in
+        # customize_compiler()
+        extra_compile_args= {
+            'gcc': [],
+            'nvcc': [
+                '-gencode=arch=compute_75,code=compute_75', '--ptxas-options=-v', '-c',
+                '--compiler-options', "'-fPIC'"
+                ]
+            },
+            include_dirs = [CUDA['include']]
+        )
+
+
+superbee_ext = Extension('superbee_cuda',
+        sources = ['cuda_superbee_kernels.cu', 'superbee_wrapper.pyx'],
         library_dirs = [CUDA['lib64']],
         libraries = ['cudart'],
         language = 'c++',
@@ -131,12 +152,12 @@ ext = Extension('tridiag_cuda',
 
 
 
-setup(name = 'tridiag',
+setup(name = 'cuda_helpers',
       # Random metadata. there's more you can supply
       author = 'Till Grenzdoerffer',
       version = '0.1',
 
-      ext_modules = [ext],
+      ext_modules = [tridiag_ext, superbee_ext],
 
       # Inject our custom trigger
       cmdclass = {'build_ext': custom_build_ext},
