@@ -106,9 +106,11 @@ void SuperbeeKernel(
             const DTYPE varSP1 = var[s1p1];
             const DTYPE varSP2 = var[s1p2];
             if (x < dim1-1)
+            {
                 maskUtr = maskWs * maskWp1;
                 maskUtrP1 = maskWp1 * maskwp2;
                 maskUtrM1 = maskWm1 * maskWs;
+            }
             const DTYPE dx = cost[y] * dxt[x];
             adv_fe = calcFlux<DTYPE>(1, velS, *dt_tracer, dx, varS, varSM1, varSP1, varSP2, maskUtr, maskUtrM1, maskUtrP1);
         }
@@ -128,9 +130,11 @@ void SuperbeeKernel(
             const DTYPE varSP1 = var[s1p1];
             const DTYPE varSP2 = var[s1p2];
             if (y < dim2-1)
+            {
                 maskVtr = maskWs * maskWp1;
                 maskVtrP1 = maskWp1 * maskwp2;
                 maskVtrM1 = maskWm1 * maskWs;
+            }
             const DTYPE dx = cost[y] * dyt[y];
             adv_fn = calcFlux<DTYPE>(cosu[y], velS, *dt_tracer, dx, varS, varSM1, varSP1, varSP2, maskVtr, maskVtrM1, maskVtrP1);
         }
@@ -160,9 +164,11 @@ void SuperbeeKernel(
             const DTYPE varSP1 = var[s1p1];
             const DTYPE maskWp1 = maskW[s1p1];
             if (z < dim3-1)
+            {
                 maskWtr = maskWs * maskWp1;
                 maskWtrP1 = maskWp1 * maskwp2;
                 maskWtrM1 = maskWm1 * maskWs;
+            }
             const DTYPE dx = dzw[z];
             adv_ft = calcFlux<DTYPE>(1, velS, *dt_tracer, dx, varS, varSM1, varSP1, varSP2, maskWtr, maskWtrM1, maskWtrP1);
     }
