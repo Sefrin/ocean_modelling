@@ -285,8 +285,33 @@ def integrate_tke(u, v, w, maskU, maskV, maskW, dxt, dxu, dyt, dyu, dzt, dzw, co
                     if z == d_tri.shape[2]-1:
                         d_tri[x,y,z] += dt_tke * forc_tke_surface[x,y,z] / (0.5 * dzw[z])
     
-    # so far so good
-    sol, water_mask = solve_implicit(ks, a_tri, b_tri, c_tri, d_tri, b_edge=b_tri_edge)
+    # so far so good#
+    
+    edge_mask = np.zeros(a_tri.shape)
+    water_mask = np.zeros(a_tri.shape)
+    for x in range(a_tri.shape[0]):
+        for y in range(a_tri.shape[1]):
+            for z in range(a_tri.shape[2]):
+                land_mask = ks[x,y] >= 0
+                edge_mask = land_mask & (z == ks[x, y])
+                water_mask[x,y,z] = land_mask & (z >= ks[x, y])
+
+                a_tri[x,y,z] = water_mask[x,y,z] * a_tri[x,y,z] * np.logical_not(edge_mask)
+                if water_mask[x,y,z]:
+                    b_tri[x,y,z] = b_tri
+                else:
+                    b_tri = 1.
+                if b_tri_edge is not None:
+                    if edge_mask:
+                        b_tri[x,y,z] = b_tri_edge[x,y,z]
+                c_tri[x,y,z] = water_mask[x,y,z] * c_tri[x,y,z]
+                d_tri[x,y,z] = water_mask[x,y,z] * d_tri[x,y,z]
+
+    # if d_edge is not None:
+    #     d_tri = where(edge_mask, d_edge, d_tri)
+
+    sol = solve_tridiag(a_tri, b_tri, c_tri, d_tri)
+    
 
 
     tke = jax.ops.index_update(
