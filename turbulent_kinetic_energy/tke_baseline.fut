@@ -107,71 +107,97 @@ entry integrate_tke [xdim][ydim][zdim]
     let K_h_tke = 2000
     let dt_tke = dt_mom
 
-    -- -- Init delta
-    let tridiags = tabulate_3d xdim ydim zdim (\x y z ->
-                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+    let sqrttke = tabulate_3d xdim ydim zdim (\x y z ->
+                                        f64.sqrt (f64.max 0 tketau[x,y,z])
+                                    )
+    -- Init delta
+    let delta = tabulate_3d xdim ydim zdim (\x y z ->
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z < zdim-1
+                    then dt_tke / dzt[z+1] * alpha_tke * 0.5
+                        * (kappaM[x, y, z] + kappaM[x, y, z+1])
+                    else 0
+                )
+    let a_tri = tabulate_3d xdim ydim zdim (\x y z ->
+                        if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
                         then
-                            let tke = tketau[x,y,z]
-                            let sqrttke = f64.sqrt (f64.max 0 tke)
                             let ks_val = kbot[x,y]-1
                             let land_mask = ks_val >= 0
-                            let edge_mask = land_mask && ((i32.i64 z) == ks_val)
-                            let water_mask = land_mask && ((i32.i64 z) >= ks_val)
-                            
-                            let kappa = kappaM[x, y, z]
-                            let deltam1 = if z > 0 then dt_tke / dzt[z] * alpha_tke * 0.5
-                                * (kappaM[x, y, z-1] + kappa) else 0
-                            let delta = if z < zdim-1 then dt_tke / dzt[z+1] * alpha_tke * 0.5
-                                * (kappa + kappaM[x, y, z+1]) else 0
-                            let dzwz = dzw[z]
-                            let mxls = mxl[x, y, z]
-                            let a = 
-                                if edge_mask || (!water_mask)
-                                    then 0
-                                else
-                                    if z > 0 && z < zdim-1
-                                        then -deltam1 / dzwz
-                                    else if z == zdim-1
-                                        then -deltam1 / (0.5 * dzwz)
-                                    else 0
-                            let b = if !water_mask
-                                        then 1
-                                    else if edge_mask
-                                    then
-                                        1 + delta / dzwz
-                                            + dt_tke * c_eps / mxls * sqrttke
-                                    else
-                                        if z > 0 && z < zdim-1
-                                            then 1 + (delta + deltam1) / dzwz
-                                                + dt_tke * c_eps
-                                                * sqrttke / mxls
-                                        else if z == zdim-1
-                                            then 1 + deltam1 / (0.5 * dzwz)
-                                            + dt_tke * c_eps / mxls * sqrttke
-                                        else 0
-                            let (c,d) = 
-                                if !water_mask
-                                then
-                                    (0,0)
-                                else
-                                    let c = -delta / dzwz 
-                                    let tmp = tke + dt_tke * forc[x,y,z]
-                                    in if z == zdim-1
-                                        then (c, tmp + dt_tke * forc_tke_surface[x,y] / (0.5 * dzwz))
-                                        else (c, tmp)
-                            in (a,b,c,d)
-                        else (0,0,0,0)
+                            let edge_mask = land_mask && ((i32.i64 z) ==ks_val)
+                            let water_mask = land_mask && ((i32.i64 z)>=ks_val)
+                            in if edge_mask || (!water_mask)
+                                then 0
+                            else
+                                if z > 0 && z < zdim-1
+                                    then -delta[x,y,z-1] / dzw[z]
+                                else if z == zdim-1
+                                    then -delta[x, y, z-1] / (0.5 * dzw[z])
+                                else 0
+                        else 0
                 )
+    -- init b_tri
+    let b_tri = tabulate_3d xdim ydim zdim (\x y z ->
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+                    then
+                        let ks_val = kbot[x,y]-1
+                        let land_mask = ks_val >= 0
+                        let edge_mask = land_mask && ((i32.i64 z) ==ks_val)
+                        let water_mask = land_mask && ((i32.i64 z) >=ks_val)
+                        in if !water_mask
+                            then 1
+                        else if edge_mask
+                        then
+                            1 + delta[x,y,z] / dzw[z]
+                                + dt_tke * c_eps / mxl[x, y, z] * sqrttke[x, y, z]
+                        else
+                            if z > 0 && z < zdim-1
+                                then 1 + (delta[x, y, z] + delta[x, y, z-1]) / dzw[z]
+                                    + dt_tke * c_eps
+                                    * sqrttke[x, y, z] / mxl[x, y, z]
+                            else if z == zdim-1
+                                then 1 + delta[x, y, z-1] / (0.5 * dzw[z])
+                                + dt_tke * c_eps / mxl[x,y,z] * sqrttke[x,y,z]
+                            else 0
+                    else 0
+                )
+    -- init b_tri_edge
+    -- let b_tri_edge = tabulate_3d xdim ydim zdim (\x y z ->
+    --                     if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+    --                     then  1 + delta[x,y,z] / dzw[z]
+    --                             + dt_tke * c_eps / mxl[x, y, z] * sqrttke[x, y, z]
+    --                     else 0
+    --                 )
+    let c_tri = tabulate_3d xdim ydim zdim (\x y z ->
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z < zdim-1
+                        then
+                            let ks_val = kbot[x,y]-1
+                            let land_mask = ks_val >= 0
+                            let water_mask = land_mask && ((i32.i64 z) >=ks_val)
+                            in if !water_mask
+                                then
+                                    0
+                                else
+                                    -delta[x,y,z] / dzw[z]
+                        else 0
+                )
+    let d_tri = tabulate_3d xdim ydim zdim (\x y z ->
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+                        then
+                            let ks_val = kbot[x,y]-1
+                            let land_mask = ks_val >= 0
+                            let water_mask = land_mask && ((i32.i64 z) >=ks_val)
+                            in if !water_mask
+                            then
+                                0
+                            else
+                                let tmp = tketau[x,y,z] + dt_tke * forc[x,y,z]
+                                in if z == zdim-1
+                                    then tmp + dt_tke * forc_tke_surface[x,y] / (0.5 * dzw[z])
+                                    else tmp
+                        else 0
+                )
+    let sol = tridiag a_tri b_tri c_tri d_tri
 
-    let (a, b, c, d) = unzip4 (map (\xs ->
-                            unzip4 (map (\ys ->
-                                unzip4 ys
-                            ) xs)
-                       ) tridiags)
-    let sol = tridiag a b c d
 
-
-    
 
     let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
                 let ks_val = kbot[x,y]-1
@@ -189,8 +215,6 @@ entry integrate_tke [xdim][ydim][zdim]
                             else 0
                     else 0
                     )
-    
-    
     -- clip negative vals on last z val
     let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
                          if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z == zdim-1
@@ -201,9 +225,8 @@ entry integrate_tke [xdim][ydim][zdim]
                                 else tke_val
                         else tketaup1[x,y,z]
                     )
-    
     -- lateral diff east
-    let flux_east_latdiff = tabulate_3d xdim ydim zdim (\x y z ->
+    let flux_east = tabulate_3d xdim ydim zdim (\x y z ->
                         if x < xdim-1
                         then
                             K_h_tke * (tketau[x+1, y, z] - tketau[x, y, z])
@@ -212,7 +235,7 @@ entry integrate_tke [xdim][ydim][zdim]
 
     )
     -- lateral diff north
-    let flux_north_latdiff = tabulate_3d xdim ydim zdim (\x y z ->
+    let flux_north = tabulate_3d xdim ydim zdim (\x y z ->
                         if y < ydim-1
                         then
                             K_h_tke * (tketau[x, y+1, z] - tketau[x, y, z])
@@ -224,14 +247,13 @@ entry integrate_tke [xdim][ydim][zdim]
                         let previous = tketaup1[x,y,z] in
                         if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z == zdim-1
                         then previous + dt_tke * maskW[x, y, z] *
-                                ((flux_east_latdiff[x,y,z] - flux_east_latdiff[x-1, y, z])
+                                ((flux_east[x,y,z] - flux_east[x-1, y, z])
                                 / (cost[y] * dxt[x])
-                                + (flux_north_latdiff[x,y,z] - flux_north_latdiff[x, y-1, z])
+                                + (flux_north[x,y,z] - flux_north[x, y-1, z])
                                 / (cost[y] * dyt[y]))
                         else previous
                     )
-    
-    -- -- tendency due to advection
+    -- tendency due to advection
     let flux_east = tabulate_3d xdim ydim zdim (\x y z ->
                         if x >= 1 && x < xdim - 2 && y >= 2 && y < ydim - 2
                         then
