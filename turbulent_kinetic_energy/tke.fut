@@ -1,4 +1,4 @@
-type DTYPE = f64
+type DTYPE = f32
 
 let tridagSeq [m] (a:  [m]DTYPE, b: [m]DTYPE, c: [m]DTYPE, y: [m]DTYPE ): *[m]DTYPE =
    let cp = map (\i -> if i==0 then c[0]/b[0] else 0) (indices c)
@@ -24,7 +24,7 @@ let tridiag [xdim][ydim][zdim] (a: [xdim][ydim][zdim]DTYPE) (b: [xdim][ydim][zdi
    ) a b c y
 
 let limiter (cr: DTYPE) : DTYPE =
-    f64.max 0 (f64.max (f64.min 1 (2 * cr)) (f64.min 2 cr))
+    f32.max 0 (f32.max (f32.min 1 (2 * cr)) (f32.min 2 cr))
 
 let calcflux
     (velfac: DTYPE)
@@ -41,24 +41,24 @@ let calcflux
     : DTYPE
   =
     let scaledVel =  velfac * velS
-    let uCFL = f64.abs (scaledVel * dt_tracer / dx)
+    let uCFL = f32.abs (scaledVel * dt_tracer / dx)
     let rjp = (varSP2 - varSP1) * maskSP1
     let rj = (varSP1 - varS) * maskS
     let rjm = (varS - varSM1) * maskSM1
     let epsilon = 0.00000000000000000001
-    let divisor = if (f64.abs rj) < epsilon then epsilon else rj
+    let divisor = if (f32.abs rj) < epsilon then epsilon else rj
     let cr = if velS>0 then rjm / divisor else rjp / divisor
     let cr = limiter(cr)
-    in scaledVel * (varSP1 + varS) * 0.5 - (f64.abs scaledVel) * ((1.0 - cr) + uCFL * cr) * rj * 0.5
+    in scaledVel * (varSP1 + varS) * 0.5 - (f32.abs scaledVel) * ((1.0 - cr) + uCFL * cr) * rj * 0.5
 
 
 -- ==
 -- entry: integrate_tke
 --
--- compiled random input { [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 
---                         [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200][100]f64
---                         [200]f64 [200]f64 [200]f64 [200]f64 [100]f64 [100]f64 [200]f64 [200]f64 [200][200]i32
---                         [200][200][100]f64 [200][200][100]f64 [200][200][100]f64 [200][200]f64}
+-- compiled random input { [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 
+--                         [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200][100]f32
+--                         [200]f32 [200]f32 [200]f32 [200]f32 [100]f32 [100]f32 [200]f32 [200]f32 [200][200]i32
+--                         [200][200][100]f32 [200][200][100]f32 [200][200][100]f32 [200][200]f32}
 entry integrate_tke [xdim][ydim][zdim]
         (tketau: * [xdim][ydim][zdim]DTYPE)
         (tketaup1:*[xdim][ydim][zdim]DTYPE)
@@ -112,7 +112,7 @@ entry integrate_tke [xdim][ydim][zdim]
                     if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
                         then
                             let tke = tketau[x,y,z]
-                            let sqrttke = f64.sqrt (f64.max 0 tke)
+                            let sqrttke = f32.sqrt (f32.max 0 tke)
                             let ks_val = kbot[x,y]-1
                             let land_mask = ks_val >= 0
                             let edge_mask = land_mask && ((i32.i64 z) == ks_val)
@@ -166,42 +166,11 @@ entry integrate_tke [xdim][ydim][zdim]
     let (a, b, c, d) = unzip4 (map (\xs ->
                             unzip4 (map (\ys ->
                                 unzip4 ys
-                            ) xs)
+                            ) xs
+                        )
                        ) tridiags)
     let sol = tridiag a b c d
 
-
-    
-
-    let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
-                let ks_val = kbot[x,y]-1
-                let water_mask = (ks_val >= 0) && ((i32.i64 z) >=ks_val) in
-                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && water_mask
-                        then sol[x,y,z]
-                        else tketaup1[x,y,z]
-                )
-    let tke_surf_corr = tabulate_2d xdim ydim (\x y ->
-                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
-                    then
-                        let tke_val = tketaup1[x, y, zdim-1] in
-                            if tke_val < 0
-                            then -tke_val * 0.5 * dzw[zdim-1] / dt_tke
-                            else 0
-                    else 0
-                    )
-    
-    
-    -- clip negative vals on last z val
-    let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
-                         if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z == zdim-1
-                         then
-                            let tke_val = tketaup1[x,y,z] in
-                            if tke_val < 0
-                                then 0
-                                else tke_val
-                        else tketaup1[x,y,z]
-                    )
-    
     -- lateral diff east
     let flux_east_latdiff = tabulate_3d xdim ydim zdim (\x y z ->
                         if x < xdim-1
@@ -219,18 +188,30 @@ entry integrate_tke [xdim][ydim][zdim]
                                 / dyu[y] * maskV[x, y, z] * cosu[y]
                         else 0
                     )
-    -- add lateral diffusion
+    
+
     let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
-                        let previous = tketaup1[x,y,z] in
-                        if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z == zdim-1
-                        then previous + dt_tke * maskW[x, y, z] *
-                                ((flux_east_latdiff[x,y,z] - flux_east_latdiff[x-1, y, z])
-                                / (cost[y] * dxt[x])
-                                + (flux_north_latdiff[x,y,z] - flux_north_latdiff[x, y-1, z])
-                                / (cost[y] * dyt[y]))
-                        else previous
+                let ks_val = kbot[x,y]-1
+                let water_mask = (ks_val >= 0) && ((i32.i64 z) >= ks_val) in
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && water_mask
+                        then sol[x,y,z]
+                        else tketaup1[x,y,z]
+                )
+    let tke_surf_corr = tabulate_2d xdim ydim (\x y ->
+                    if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+                    then
+                        let tke_val = tketaup1[x, y, zdim-1] in
+                            if tke_val < 0
+                            then -tke_val * 0.5 * dzw[zdim-1] / dt_tke
+                            else 0
+                    else 0
                     )
     
+    
+    -- clip negative vals on last z val
+
+
+
     -- -- tendency due to advection
     let flux_east = tabulate_3d xdim ydim zdim (\x y z ->
                         if x >= 1 && x < xdim - 2 && y >= 2 && y < ydim - 2
@@ -290,27 +271,49 @@ entry integrate_tke [xdim][ydim][zdim]
                             in calcflux 1 velS dt_tracer dx varS varSM1 varSP1 varSP2 maskWtr maskWtrM1 maskWtrP1
                         else 0
                     )
-    let dtketau = tabulate_3d xdim ydim zdim (\x y z ->
-                    let tmp = 
-                        if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
-                        then
-                            maskW[x,y,z] * (-(flux_east[x,y,z] - flux_east[x-1, y, z])
-                                / (cost[y] * dxt[x])
-                                - (flux_north[x,y,z] - flux_north[x, y-1, z])
-                                / (cost[y] * dyt[y]))
-                        else dtketau[x,y,z]
-                    in 
-                        let z0_update = if z == 0 then tmp - flux_top[x, y, 0] / dzw[0] else tmp
+
+
+    let tketaup1dtketau = tabulate_3d xdim ydim zdim (\x y z ->
+                        let costy = cost[y]
+                        let flux_east_factor = (costy * dxt[x])
+                        let flux_north_factor = (costy * dyt[y])
+                        let dtke_init = 
+                            if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2
+                            then
+                                maskW[x,y,z] * (-(flux_east[x,y,z] - flux_east[x-1, y, z])
+                                    / flux_east_factor
+                                    - (flux_north[x,y,z] - flux_north[x, y-1, z])
+                                    / flux_north_factor)
+                            else dtketau[x,y,z]
+
+                        let z0_update = if z == 0 then dtke_init - flux_top[x, y, 0] / dzw[0] else dtke_init
                         let z_middle_update = if z >= 1 && z < zdim-1 
                                                 then z0_update - (flux_top[x, y, z] - flux_top[x, y, z-1]) / dzw[z]
                                                 else z0_update
-                        in if z == zdim-1 then z_middle_update - (flux_top[x, y, z] - flux_top[x, y, z-1]) /
+                        let dtketau =  if z == zdim-1 then z_middle_update - (flux_top[x, y, z] - flux_top[x, y, z-1]) /
                                                         (0.5 * dzw[z])
                                           else z_middle_update
-                )
 
+                        let tke_val = tketaup1[x,y,z]
+                        let step = dt_tracer * ((1.5 + AB_eps) * dtketau - (0.5 + AB_eps) * dtketaum1[x, y, z]) in
+                        if x >= 2 && x < xdim - 2 && y >= 2 && y < ydim - 2 && z == zdim-1
+                        then
+                            
+                            let tke_val_clipped = 
+                                if tke_val < 0
+                                    then 0
+                                    else tke_val
+                            in (tke_val_clipped + dt_tke * maskW[x, y, z] *
+                                ((flux_east_latdiff[x,y,z] - flux_east_latdiff[x-1, y, z])
+                                / flux_east_factor
+                                + (flux_north_latdiff[x,y,z] - flux_north_latdiff[x, y-1, z])
+                                / flux_north_factor) + step, dtketau)
+                        else (tke_val + step, dtketau)
+                    )
+    let (tketaup1, dtketau) =  unzip2 (map (\xs ->
+                                    unzip2 (map (\ys ->
+                                        unzip2 ys
+                                    ) xs)
+                            ) tketaup1dtketau)
 
-    let tketaup1 = tabulate_3d xdim ydim zdim (\x y z ->
-                        tketaup1[x,y,z] + dt_tracer * ((1.5 + AB_eps) * dtketau[x, y, z] - (0.5 + AB_eps) * dtketaum1[x, y, z])
-                    )    
     in (tketau, tketaup1, tketaum1, dtketau, dtketaup1, dtketaum1, tke_surf_corr)
