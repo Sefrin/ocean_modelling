@@ -75,17 +75,33 @@
 %%  ==================================================================
 %%  End title page
 \section{Introduction}
-Currently, many scientists use purely sequential software for ocean modelling, leading to long simulation times andinefficient use of modern hardware.The aim of this project is to tackle this problem by introducing highly parallel code that uses the potential of modern GPUsto accelerate the modelling process.
+Currently, many scientists use purely sequential software for ocean modelling, leading to long simulation times andinefficient use of modern hardware.The aim of this project is to tackle this problem by introducing highly parallel code that uses the potential of modern GPUs to accelerate the modelling process.
 \section{Tridiagonal Solver}
-One of the bottlenecks within veros is solving many tridiagonal matrices.... 
+One of the bottlenecks within veros is solving many tridiagonal systems.... 
 \subsection{Trivial Algorithm}
 \subsection{Trivial Algorithm - Coalesced}
+In the trivial algorithm, successive iterations of the recurrent loop access neighboring data in memory.
+Since we assign one problem per thread, neighboring threads access data with the stride of the size of the dimension of the tridiagonal system. This means that the accesses are uncoalesced and we can improve the performance significantly by changing the underlying data layout. 
+In this case the change is trivial - we just need to transpose the input matrix, which can be done efficiently using shared-memory tiling and tranpose the result back afterwards. 
+
+The benchmarks show clearly that the benefit of the transposition on the main kernel outweighs the cost of the transposition and thus increases the performance by a factor of XXXX.
 \subsection{Flat version}
-The flat version of the tridiagonal solver is based on.. \cite{andreetta2016finpar}
+The flat version of the tridiagonal solver is based on.. \cite{andreetta2016finpar} 
 \subsection{Flat version in a single kernel}
 \subsection{Precision}
+\subsection{Futhark}
 \subsection{Benchmarks}
-\subsection{Integration into Veros}
+
+\section{Turbulent kinetic energy}
+\subsection{Components}
+\subsection{Superbee scheme}
+
+\section{Interfacing with Jax}
+Uses XLA
+Integrating CUDA code with Cython
+Needs modified compiler... blah
+
+
 
 \bibliographystyle{alphadin}
 \bibliography{main}
