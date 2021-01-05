@@ -1,5 +1,5 @@
 type DTYPE = f64
-let INNER_DIM : i32 = 115
+let INNER_DIM : i64 = 115
 
 let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DTYPE =
   #[unsafe]
@@ -8,7 +8,7 @@ let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DT
   --   solved by scan with 2x2 matrix mult operator --
   ----------------------------------------------------
   let b0   = b[0]
-  let mats = map  (\(i: i32): (DTYPE,DTYPE,DTYPE,DTYPE)  ->
+  let mats = map  (\(i: i64): (DTYPE,DTYPE,DTYPE,DTYPE)  ->
                      if 0 < i
                      then (b[i], 0.0-a[i]*c[i-1], 1.0, 0.0)
                      else (1.0,  0.0,             0.0, 1.0))
@@ -28,7 +28,7 @@ let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DT
   --   solved by scan with linear func comp operator  --
   ------------------------------------------------------
   let y0   = y[0]
-  let lfuns= map  (\(i: i32): (DTYPE,DTYPE)  ->
+  let lfuns= map  (\(i: i64): (DTYPE,DTYPE)  ->
                      if 0 < i
                      then (y[i], 0.0-a[i]/b[i-1])
                      else (0.0,  1.0))
@@ -47,7 +47,7 @@ let tridagPar [n] (a:  [n]DTYPE, b: [n]DTYPE, c: [n]DTYPE, y: [n]DTYPE ): *[n]DT
   --             scan with linear func comp operator  --
   ------------------------------------------------------
   let yn   = y[n-1]/b[n-1]
-  let lfuns= map (\(k: i32): (DTYPE,DTYPE)  ->
+  let lfuns= map (\(k: i64): (DTYPE,DTYPE)  ->
                     let i = n-k-1
                     in  if   0 < k
                         then (y[i]/b[i], 0.0-c[i]/b[i])

@@ -166,7 +166,6 @@ def adv_flux_superbee_wgrid(var, u_wgrid, v_wgrid, w_wgrid, maskW, dxt, dyt, dzw
         for y in range(adv_fe.shape[1]):
             for z in range(adv_fe.shape[2]):
                 if x >= 1 and x < adv_fe.shape[0] - 2 and y >= 2 and y < adv_fe.shape[1] - 2:
-                    dx = cost[y]
                     velS = u_wgrid[x,y,z]
                     maskUtr = 0
                     maskUtrP1 = 0
@@ -572,7 +571,7 @@ def integrate_tke(u, v, w, maskU, maskV, maskW, dxt, dxu, dyt, dyu, dzt, dzw, co
     #     dt_tracer * ((1.5 + AB_eps) * dtke[:, :, :, tau] - (0.5 + AB_eps) * dtke[:, :, :, taum1])
     # )
 
-    return tke, dtke, tke_surf_corr, sol, a_tri, b_tri, c_tri, d_tri, delta, flux_east, flux_north
+    return tke, dtke, tke_surf_corr
 
 
 # def prepare_inputs(*inputs, device):
