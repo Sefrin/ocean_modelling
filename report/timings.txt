@@ -5,7 +5,6 @@ Primitive parallel version using const took 22 microseconds (0.02ms)
 Primitive parallel coalesced version took 36 microseconds (0.04ms)
 Primitive parallel coalesced version using const took 38 microseconds (0.04ms)
 Flat version took 164 microseconds (0.16ms)
-Bandwith: 36.9803GB/s
 Flat version with sequential first recurrence took 114 microseconds (0.11ms)
 Flat version with sequential first recurrence using const took 125 microseconds (0.12ms)
 Flat version using shared mem took 90 microseconds (0.09ms)
@@ -43,12 +42,13 @@ Primitive parallel version using const took 954 microseconds (0.95ms)
 Primitive parallel coalesced version took 651 microseconds (0.65ms)
 Primitive parallel coalesced version using const took 508 microseconds (0.51ms)
 Flat version took 2474 microseconds (2.47ms)
-Bandwith: 245.14GB/s
 Flat version with sequential first recurrence took 2124 microseconds (2.12ms)
 Flat version with sequential first recurrence using const took 1812 microseconds (1.81ms)
 Flat version using shared mem took 6331 microseconds (6.33ms)
 Futhark: 6293 us (6.29ms)
 Futhark sequential: 836 microseconds (0.84ms)
+
+
 ----------------------------
 
 1000 x 115
@@ -84,7 +84,7 @@ Flat version took 9798 microseconds (9.80ms)
 Flat version with sequential first recurrence took 11605 microseconds (11.61ms)
 Flat version with sequential first recurrence using const took 7351 microseconds (7.35ms)
 Flat version using shared mem took 9481 microseconds (9.48ms)
-Futhark: 12413 us (12.41ms)
+Futhark: 12413us (12.41ms)
 Futhark sequential: 3654 microseconds (3.65ms)
 
 100000 x 115
@@ -96,8 +96,13 @@ Flat version took 19428 microseconds (19.43ms)
 Flat version with sequential first recurrence took 23685 microseconds (23.68ms)
 Flat version with sequential first recurrence using const took 13847 microseconds (13.85ms)
 Flat version using shared mem took 18683 microseconds (18.68ms)
-Futhark: 24715 us (24.72ms)
+Futhark: 24715us (24.72ms)
 Futhark sequential: 6763 microseconds (6.76ms)
+
+-------------------------------------------------------------------
+
+
+
 
 1000 x 1000
 Primitive parallel version took 2652 microseconds (2.65ms)
@@ -120,7 +125,7 @@ Flat version took 19247 microseconds (19.25ms)
 Flat version with sequential first recurrence took 10585 microseconds (10.59ms)
 Flat version with sequential first recurrence using const took 10999 microseconds (11.00ms)
 Flat version using shared mem took 15903 microseconds (15.90ms)
-Futhark: 20350 us (20.35ms)
+Futhark: 20350us (20.35ms)
 Futhark sequential: 6285 microseconds (6.29ms)
 
 50000 x 1000
