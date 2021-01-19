@@ -8,12 +8,15 @@
 \usepackage{hyperref}
 \usepackage{float}
 \usepackage{subcaption}
+\usepackage{bm}
+\usepackage{amsmath}
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
     filecolor=magenta,      
     urlcolor=cyan,
 }
+
 
 \counterwithout{section}{chapter}
 \counterwithout{figure}{chapter}
@@ -111,13 +114,52 @@ This allows an easy use of the parallel code through a python interface.
 
 \section{Tridiagonal Solver}
 In this project I first investigated the implementation of a tridiagonal solver that is used throughout Veros. 
-The requirement for this solver is that it solves many (ca. 50000) tridiagonal systems with comparably small diagnonals (ca. 100) as fast as possible.
+A tridiagonal system of size $n$ is shown in fig.~\ref{eq:tridiag}, where $\bm{a}$, $\bm{b}$ and $\bm{c}$ are vectors of size $n$ and $a_0 = c_n = 0$ 
+
+The diagonals $\bm{a}$, $\bm{b}$ and $\bm{c}$, as well as $\bm{d}$ are given and the task of the solver is to find $\bm{x}$.
+
+\begin{equation} \label{eq:tridiag}
+    \begin{bmatrix}
+        b_1 & c_1 & 0  & 0 & 0 & 0 & 0 & 0 \\
+        a_2 & b_2 & c_2 & 0 & 0 & 0 & 0 & 0\\
+        0   & a_3 & b_3 & c_3 & 0 & 0 & 0 & 0\\
+        0   &  0  & a_4 & b_4 & c_4 & 0 & 0 & 0\\
+        0   &  0  &  0  & a_5 & b_3 & \dots & 0  & 0\\
+        0   &  0  &  0  &  0  & \dots & \dots &  \dots & 0 \\
+        0   &  0  &  0  &  0  &  0  & \dots & \dots & c_{n-1}\\
+        0   &  0  &  0  &  0  &  0  &  0  & a_n & b_n \\
+    \end{bmatrix}
+    \begin{bmatrix}
+        x_1 \\
+        x_2 \\
+        x_3   \\
+        x_4   \\
+        \dots   \\
+        \dots   \\
+        \dots   \\
+        x_n   \\
+    \end{bmatrix}
+     = 
+     \begin{bmatrix}
+        d_1 \\
+        d_2 \\
+        d_3   \\
+        d_4   \\
+        \dots   \\
+        \dots   \\
+        \dots   \\
+        d_n   \\
+    \end{bmatrix}
+\end{equation}
+
+
+The requirement for the solver in Veros is that it solves many (ca. 50000) tridiagonal systems of comparably small size (ca. 100) as fast as possible.
 
 I considered two algorithms for solving tridiagonal systems for this task and experimented with different performance optimizations for both.
 
 \subsection{Thomas Algorithm}
 One simple algorithm for solving a tridiagonal system is the Thomas Algorithm.
-Pythonlike pseudocode for it is shown in fig.~\ref{fig:thomas}.
+Pythonlike pseudocode for it is shown in eq.~\ref{fig:thomas}, where a, b, c, d and x refer to the respective vectors shown in eq.\ref{eq:tridiag}.
 We can see that in the both for-loops there are true RAW-dependencies across iterations, which means that the algorithm itself is not trivially parallelizable.
 However, in our case we want to solve many small tridiagonal systems, so we can parallelize over the different systems and leave the Thomas Algorithm in its sequential form.
 As long as we have enough systems to fully utilize the GPU it is running on, this implementation seems like a good approach.
@@ -131,10 +173,10 @@ for i in range(1, n):
     b[i] += -w * c[i - 1]
     d[i] += -w * d[i - 1]
 
-out[-1] = d[-1] / b[-1]
+x[-1] = d[-1] / b[-1]
 
 for i in range(n - 2, -1, -1):
-    out[i] = (d[i] - c[i] * out[i + 1]) / b[i]
+    x[i] = (d[i] - c[i] * out[i + 1]) / b[i]
     \end{lstlisting}
 \end{figure}
 
@@ -145,7 +187,7 @@ In the trivial algorithm, successive iterations of the recurrent loop access nei
 Since we assign one tridiagonal system to each thread, neighboring threads access data with the stride of the size of the tridiagonal system. This means that the accesses are uncoalesced and we can improve the performance significantly by changing the underlying data layout. 
 In this case the change is trivial - we just need to transpose the input matrix, which can be done efficiently using shared-memory tiling and tranpose the result back afterwards. 
 
-Of course this is only benefitial if the time saved in the main kernel is larger due to coalesced access than the time spent tranposing the inputs and results.
+Of course this is only beneficial if the time saved in the main kernel is larger due to coalesced access than the time spent tranposing the inputs and results.
 
 \subsection{Thomas Algorithm - Loop unrolling}
 Since in our use case the size of the tridiagonal systems is relatively small, it might make sense to unroll the recurrent loops. However, this is only possible if we know the size of the systems at compile time, or compile the CUDA kernel at runtime (for example using CuPy \cite{cupylearningsys2017}). 
@@ -247,7 +289,10 @@ We can see that there are lots of parameters that influence which solution is th
 \section{Turbulent kinetic energy}
 After integrating the tridiagonal solver into Jax (see section~\ref{sec:integrate}), I decided to look at one example context in which the solver would be used.
 
-The turbulent kinetic energy benchmark is a larger routine that uses different components like the tridiagonal solver. It acts on a three dimensional grid and contains a lot of stencil computations. 
+The turbulent kinetic energy benchmark is a larger routine that uses different components like the tridiagonal solver. It acts on a three dimensional grid and contains a lot of stencil computations.
+
+This routine is responsible for qunatifying the effect of small-scale water turbulence on the overall state of the simulation. Since we work on a discrete grid with a fixed resolution, effects that occur within one grid cell will not be taken into account. Thus it is important to use the quantifcation of this effect, offered by the turbulent kinetic energy routine, such that these turbulence do not need to be calculated in detail.
+
 \subsection{Components}
 The turbulent kinetic energy routine mainly consists of the following parts:
 \begin{enumerate}
@@ -257,11 +302,18 @@ The turbulent kinetic energy routine mainly consists of the following parts:
     \item The Superbee scheme
 \end{enumerate}
 After integrating my tridiagonal solver and profiling the benchmark using tensorboard, which is well supported by Jax, I found that the Superbee scheme was the largest bottleneck.  
+
+
+
+
 \subsection{Superbee scheme}
-The superbee scheme is a stencil calculation that also works on a 3D grid. It computes three flux grids, one for each dimension and each using a stencil along the respective dimension. 
+The superbee scheme is part of a stencil calculation that also works on a 3D grid.
+Its purpose is to calculate the influence of advection of tracers within the water and will result in three values for each of the grid cell. One value corresponding to flux along the first dimension of the grid (named flux\_east), one along the second dimension (named flux\_north) and one along the third dimension (named flux\_top).
+
+Since I do not have sufficient knowledge of the physics and mathematics behind this operation, I looked at this problem purely from a coding perspective. More specificly I tried to understand the pattern of memory accesses and tried to map the computation efficiently to CUDA code.
+
 The indexing pattern of the stencil is shown in fig.~\ref{fig:stencil_code} and a 2D projection of it is visualized in fig.~\ref{fig:stencil_shape}. 
 
-A very straightforward observation about this pattern is, that there is an overlap of the three computations. This means that when implementing this scheme in CUDA it makes sense to fuse the computations together, such that the value $grid\left[x,y,z\right]$ only has to be read once from global memory and can be stored in registers.
 \begin{figure}[hbtp]
     \caption{Superbee stencil access pattern}
     \label{fig:stencil_code}
@@ -291,6 +343,9 @@ for x in range(width):
     \caption{2D projection of the stencil shape. The green dot symbolizes the flux in "top" direction, going along the z axis.}
     \label{fig:stencil_shape}
 \end{figure}
+
+A very straightforward observation about this pattern is, that there is an overlap of the three computations. This means that when implementing this scheme in CUDA it makes sense to fuse the computations together, such that the value $grid\left[x,y,z\right]$ only has to be read once from global memory and can be stored in registers.
+
 \subsubsection{Tiled stencil computation}
 In order to save more accesses to global memory, we can observe that successive iterations of this stencil computation will also read almost the same data.
 For example, in the iteration $x = 0 ; y = 0 ; z = 2$ we read $grid[0,0,0]$, $grid[0,0,1]$,$grid[0,0,2]$ and $grid[0,0,3]$ and in iteration $x = 0 ; y = 0 ; z = 3$
