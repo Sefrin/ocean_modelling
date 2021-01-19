@@ -2,7 +2,7 @@ rtx 2070 super
 1000 x 15
 Primitive parallel version took 37 microseconds (0.04ms)
 Primitive parallel version using const took 22 microseconds (0.02ms)
-Primitive parallel coalesced version took 36 microseconds (0.04ms)
+Primitive parallel coalesced version took 36 microseconds (0.04ms)   
 Primitive parallel coalesced version using const took 38 microseconds (0.04ms)
 Flat version took 164 microseconds (0.16ms)
 Flat version with sequential first recurrence took 114 microseconds (0.11ms)
@@ -39,8 +39,8 @@ Futhark sequential: 468 microseconds (0.47ms)
 100000 x 15
 Primitive parallel version took 2873 microseconds (2.87ms)
 Primitive parallel version using const took 954 microseconds (0.95ms)
-Primitive parallel coalesced version took 651 microseconds (0.65ms)
-Primitive parallel coalesced version using const took 508 microseconds (0.51ms)
+Primitive parallel coalesced version took 651 microseconds (0.65ms) x 4.4
+Primitive parallel coalesced version using const took 508 microseconds (0.51ms) x5.6
 Flat version took 2474 microseconds (2.47ms)
 Flat version with sequential first recurrence took 2124 microseconds (2.12ms)
 Flat version with sequential first recurrence using const took 1812 microseconds (1.81ms)
@@ -90,7 +90,7 @@ Futhark sequential: 3654 microseconds (3.65ms)
 100000 x 115
 Primitive parallel version took 50007 microseconds (50.01ms)
 Primitive parallel version using const took 18156 microseconds (18.16ms)
-Primitive parallel coalesced version took 5126 microseconds (5.13ms)
+Primitive parallel coalesced version took 5126 microseconds (5.13ms) x9.7
 Primitive parallel coalesced version using const took 5150 microseconds (5.15ms)
 Flat version took 19428 microseconds (19.43ms)
 Flat version with sequential first recurrence took 23685 microseconds (23.68ms)
