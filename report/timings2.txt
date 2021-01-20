@@ -15,6 +15,11 @@ jax cuda call (32x32x41) took: 0.20269989967346191ms
 jax cuda call tiled (32x32x41) took: 0.21079421043395996ms
 jax call 32x32x41 took: 1.9757723808288574ms
 
+jax cuda call tiled(323x323x82) took: 4.322456121444702ms
+jax cuda call (323x323x82) took: 4.2308104038238525ms
+jax call 323x323x82 took: 11.887978315353394ms
+
+
 tke benchmark:
 no optimizations: 0.069s
 tridiag: 0.063s
