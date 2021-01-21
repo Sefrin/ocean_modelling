@@ -5,7 +5,7 @@ The different implementations of the tridiagonal solver can be found in the [tri
 
 ## Superbee
 
-The optimized superbee kernels are in [this](tridiag/jax_xla/superbee_kernels.cu) file.
+The optimized superbee kernels are in [this](tridiag/jax_xla/cuda_superbee_kernels.cu) file.
 
 ## turbulent kinetic energy
 
