@@ -11,7 +11,7 @@ The optimized superbee kernels are in [this](tridiag/jax_xla/cuda_superbee_kerne
 
 The futhark code for this routine is in [this](turbulent_kinetic_energy/tke.fut) file.
 
-# Interfacing CUDA with Jax through XLA
+## Interfacing CUDA with Jax through XLA
 The code for interfacing CUDA with Jax is located in [this folder](tridiag/jax_xla) and can be installed with the command ```pip install -e jax_xla```
 Of course this needs the Jax (https://github.com/google/jax) package to be installed.
 
