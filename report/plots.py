@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 def plot_timings(x, size, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq):
     plt.xlabel("Number of systems")
@@ -29,7 +30,7 @@ flat_shared = [0.09,0.78,3.42,6.33]
 futhark_flat = [0.08,0.65,3.18,6.29]
 futhark_seq = [0.10,0.13,0.47,0.84]
 
-plot_timings(x, 15, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
+# plot_timings(x, 15, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
 
 
 
@@ -44,7 +45,7 @@ flat_shared = [0.24,2.09,9.48,18.68]
 futhark_flat = [0.26,2.50,12.41,24.72]
 futhark_seq = [0.29,0.76,3.65,6.76]
 
-plot_timings(x, 115, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
+# plot_timings(x, 115, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
 
 ##### Inner dim 1000  -- out of memory for 100000
 x = [1000, 10000, 50000]
@@ -57,7 +58,7 @@ flat_shared = [1.67,15.90,79.22]
 futhark_flat = [2.15,20.35,100.01]
 futhark_seq = [2.36,6.29,31.46]
 
-plot_timings(x, 1000, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
+# plot_timings(x, 1000, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
 
 
 ##### Inner dim 10000  
@@ -71,4 +72,33 @@ flat_shared = None
 futhark_flat = None
 futhark_seq = None
 
-plot_timings(x, 10000, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
+# plot_timings(x, 10000, prim_parallel, prim_parallel_const, prim_parallel_coal, prim_parallel_coal_const, flat, flat_shared, futhark_flat, futhark_seq)
+
+
+
+fig, ax_left = plt.subplots()
+
+ax_right = ax_left.twinx()
+
+
+simple_fused_stencil = np.array([4.2308104038238525,2.154141664505005,0.3706693649291992,0.20269989967346191])
+tiled_fused_stencil = [4.322456121444702,2.3037397861480713,0.38097262382507324,0.21079421043395996]
+jax = np.array([11.887978315353394,5.404012203216553,2.3224127292633057,1.9757723808288574])
+x = [0,1,2,3]
+my_xticks = ['323x323x82','323x323x41','100x100x41','32x32x41']
+plt.xticks(x, my_xticks)
+plt.xlabel("Size of grid")
+ax_left.set_ylabel("execution time (ms)")
+ax_right.set_ylabel("speedup")
+plt.title("Benchmarks of Superbee implementations")
+ax_left.plot(x, simple_fused_stencil, label = "Simple fused stencil")
+ax_left.plot(x, tiled_fused_stencil, label = "Overlapping tiles stencil")
+ax_left.plot(x, jax, label = "Jax stencil")
+ax_right.plot(x, (jax / simple_fused_stencil), label = "Speedup vs. Jax", color="red", linestyle="dashed")
+ax_right.legend(loc="upper right")
+ax_left.legend(loc="upper left")
+plt.savefig("timings_superbee" +".png")
+plt.show()
+
+
+## sppedutp

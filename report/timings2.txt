@@ -8,9 +8,11 @@ jax 1st (jit): 463ms
 jax cuda call 323x323x41 took: 2.154141664505005ms
 jax cuda call tiled 323x323x41 took: 2.3037397861480713ms
 jax call 323x323x41 took: 5.404012203216553ms
+
 jax cuda call (100x100x41) took: 0.3706693649291992ms
 jax cuda call tiled (100x100x41) took: 0.38097262382507324ms
 jax call 100x100x41 took: 2.3224127292633057ms
+
 jax cuda call (32x32x41) took: 0.20269989967346191ms
 jax cuda call tiled (32x32x41) took: 0.21079421043395996ms
 jax call 32x32x41 took: 1.9757723808288574ms
