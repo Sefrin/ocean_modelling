@@ -14,3 +14,5 @@ The futhark code for this routine is in the ```turbulent_kinetic_energy/tke.fut`
 # Interfacing CUDA with Jax through XLA
 The code for interfacing CUDA with Jax is located in ```tridiag/jax_xla``` and can be installed with the command ```pip install -e jax_xla```
 Of course this needs the Jax (https://github.com/google/jax) package to be installed.
+
+## Please ignore the rest of this repository.
